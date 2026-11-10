@@ -1,22 +1,22 @@
-/**
- * Calculate the great-circle distance between two geographic coordinates
- * using the Haversine formula. Pass round=false for precise radius comparisons.
- */
 export function calculateDistanceMeters(lat1, lon1, lat2, lon2, round = true) {
   if (
-    lat1 === undefined ||
-    lon1 === undefined ||
-    lat2 === undefined ||
-    lon2 === undefined ||
-    lat1 === null ||
-    lon1 === null ||
-    lat2 === null ||
-    lon2 === null
+    !Number.isFinite(lat1) ||
+    !Number.isFinite(lon1) ||
+    !Number.isFinite(lat2) ||
+    !Number.isFinite(lon2) ||
+    lat1 < -90 ||
+    lat1 > 90 ||
+    lat2 < -90 ||
+    lat2 > 90 ||
+    lon1 < -180 ||
+    lon1 > 180 ||
+    lon2 < -180 ||
+    lon2 > 180
   ) {
     return 0;
   }
 
-  const R = 6371000; // Radius of Earth in meters
+  const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -31,15 +31,14 @@ export function calculateDistanceMeters(lat1, lon1, lat2, lon2, round = true) {
   return round ? Math.round(meters) : meters;
 }
 
-/**
- * Reverse geocode a latitude/longitude pair via OpenStreetMap Nominatim.
- * Returns { line1, line2, landmark, displayName }
- */
 export async function reverseGeocode(latitude, longitude) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
       {
+        signal: controller.signal,
         headers: {
           'User-Agent': 'AquaPulse-App',
         },
@@ -87,8 +86,9 @@ export async function reverseGeocode(latitude, longitude) {
       displayName: data.display_name || '',
     };
   } catch (error) {
-    console.warn('Reverse geocoding error:', error);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
