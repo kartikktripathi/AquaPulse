@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { calculateDistanceMeters, reverseGeocode } from '../utils/geo';
 
 export const PROBLEM_CATEGORIES = [
   { id: 'pipe_burst', label: 'Pipe Burst / Major Leak', icon: 'water-outline' },
@@ -60,13 +61,28 @@ export const PROBLEM_STATUSES = [
   },
 ];
 
-export default function ReportModal({ visible, onClose, userCoords, onSubmit }) {
+export default function ReportModal({
+  visible,
+  onClose,
+  userCoords,
+  problemCoords,
+  onAdjustOnMap,
+  onResetProblemLocation,
+  onSubmit,
+}) {
   const insets = useSafeAreaInsets();
 
   const [problemName, setProblemName] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [customCategory, setCustomCategory] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  // Address fields
+  const [addressLine1, setAddressLine1] = useState('');
+  const [addressLine2, setAddressLine2] = useState('');
+  const [landmark, setLandmark] = useState('');
+  const [isFetchingAddress, setIsFetchingAddress] = useState(false);
+
   const [description, setDescription] = useState('');
   const [photos, setPhotos] = useState([]);
   const [status, setStatus] = useState(PROBLEM_STATUSES[0].id);
@@ -75,11 +91,83 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
   const [errors, setErrors] = useState({});
   const [isSubmitted, setIsSubmitted] = useState(false);
 
+  // Determine active coordinates and calculate distance from user
+  const activeProblemCoords = problemCoords || userCoords;
+  const distance =
+    userCoords && activeProblemCoords
+      ? calculateDistanceMeters(
+          userCoords.latitude,
+          userCoords.longitude,
+          activeProblemCoords.latitude,
+          activeProblemCoords.longitude
+        )
+      : 0;
+
+  const isWithin500m = distance <= 500;
+
+  // Auto-fill address when modal opens or coordinates update
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (visible && activeProblemCoords && !addressLine1) {
+      setIsFetchingAddress(true);
+      reverseGeocode(activeProblemCoords.latitude, activeProblemCoords.longitude)
+        .then((geo) => {
+          if (!isCancelled && geo) {
+            if (geo.line1 && !addressLine1) {
+              setAddressLine1(geo.line1);
+            }
+            if (geo.line2 && !addressLine2) {
+              setAddressLine2(geo.line2);
+            }
+            if (geo.landmark && !landmark) {
+              setLandmark(geo.landmark);
+            }
+          }
+        })
+        .finally(() => {
+          if (!isCancelled) {
+            setIsFetchingAddress(false);
+          }
+        });
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [visible, activeProblemCoords?.latitude, activeProblemCoords?.longitude]);
+
+  const handleAutoFetchAddress = async () => {
+    if (!activeProblemCoords) return;
+    try {
+      setIsFetchingAddress(true);
+      const geo = await reverseGeocode(
+        activeProblemCoords.latitude,
+        activeProblemCoords.longitude
+      );
+      if (geo) {
+        if (geo.line1) setAddressLine1(geo.line1);
+        if (geo.line2) setAddressLine2(geo.line2);
+        if (geo.landmark) setLandmark(geo.landmark);
+        setErrors((prev) => ({
+          ...prev,
+          addressLine1: undefined,
+          landmark: undefined,
+        }));
+      }
+    } finally {
+      setIsFetchingAddress(false);
+    }
+  };
+
   const resetForm = () => {
     setProblemName('');
     setSelectedCategory(null);
     setCustomCategory('');
     setIsDropdownOpen(false);
+    setAddressLine1('');
+    setAddressLine2('');
+    setLandmark('');
     setDescription('');
     setPhotos([]);
     setStatus(PROBLEM_STATUSES[0].id);
@@ -90,6 +178,19 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
   const handleClose = () => {
     resetForm();
     onClose();
+  };
+
+  const handleResetToUserLocation = () => {
+    if (onResetProblemLocation) {
+      onResetProblemLocation();
+    }
+    setErrors((prev) => ({ ...prev, radius: undefined }));
+  };
+
+  const handleAdjustOnMap = () => {
+    if (onAdjustOnMap) {
+      onAdjustOnMap();
+    }
   };
 
   const handleTakePhoto = async () => {
@@ -170,7 +271,11 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
     if (categoryItem.id !== 'other') {
       setCustomCategory('');
     }
-    setErrors((prev) => ({ ...prev, category: undefined, customCategory: undefined }));
+    setErrors((prev) => ({
+      ...prev,
+      category: undefined,
+      customCategory: undefined,
+    }));
   };
 
   const handleSubmit = () => {
@@ -186,8 +291,21 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
       newErrors.customCategory = 'Please specify the custom category.';
     }
 
+    if (!addressLine1.trim()) {
+      newErrors.addressLine1 = 'Please enter Address Line 1.';
+    }
+
+    if (!landmark.trim()) {
+      newErrors.landmark = 'Please enter a landmark to help locate the issue.';
+    }
+
     if (!description.trim()) {
       newErrors.description = 'Please describe the water problem in detail.';
+    }
+
+    // 500m Radius Circle Constraint
+    if (distance > 500) {
+      newErrors.radius = `Problem location is ${distance}m away. It must be within 500m of where you are.`;
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -203,10 +321,17 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
         selectedCategory.id === 'other'
           ? customCategory.trim()
           : selectedCategory.label,
+      address: {
+        line1: addressLine1.trim(),
+        line2: addressLine2.trim(),
+        landmark: landmark.trim(),
+      },
       description: description.trim(),
       photos,
       status,
-      coordinates: userCoords || null,
+      coordinates: activeProblemCoords || null,
+      userCoordinates: userCoords || null,
+      distanceFromUser: distance,
       createdAt: new Date().toISOString(),
     };
 
@@ -259,14 +384,17 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
 
             {isSubmitted ? (
               /* Success Screen */
-              <View style={styles.successContainer}>
+              <ScrollView
+                style={styles.formScroll}
+                contentContainerStyle={styles.successScrollContent}
+                showsVerticalScrollIndicator={false}>
                 <View style={styles.successIconBubble}>
                   <Ionicons name="checkmark" size={48} color="#34c759" />
                 </View>
                 <Text style={styles.successTitle}>Report Submitted!</Text>
                 <Text style={styles.successMessage}>
-                  Thank you for submitting this report. Your report helps municipal
-                  and community teams resolve water issues quickly.
+                  Thank you for reporting this issue. Your submission helps municipal
+                  and local maintenance teams respond rapidly.
                 </Text>
 
                 <View style={styles.summaryCard}>
@@ -282,6 +410,32 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
                       {selectedCategory?.id === 'other'
                         ? customCategory
                         : selectedCategory?.label}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Address Line 1:</Text>
+                    <Text style={styles.summaryValue} numberOfLines={2}>
+                      {addressLine1}
+                    </Text>
+                  </View>
+                  {addressLine2 ? (
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Address Line 2:</Text>
+                      <Text style={styles.summaryValue} numberOfLines={2}>
+                        {addressLine2}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Landmark:</Text>
+                    <Text style={styles.summaryValue} numberOfLines={1}>
+                      {landmark}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>500m Radius Status:</Text>
+                    <Text style={[styles.summaryValue, { color: '#34c759', fontWeight: '600' }]}>
+                      Within circle ({distance}m away)
                     </Text>
                   </View>
                   <View style={styles.summaryRow}>
@@ -311,7 +465,7 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
                   <Ionicons name="checkmark-done" size={20} color="#ffffff" />
                   <Text style={styles.primaryButtonText}>Done</Text>
                 </TouchableOpacity>
-              </View>
+              </ScrollView>
             ) : (
               /* Form Body */
               <ScrollView
@@ -319,14 +473,65 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
                 contentContainerStyle={styles.formContent}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}>
-                {/* Location indicator */}
-                {userCoords && (
-                  <View style={styles.locationBadge}>
-                    <Ionicons name="location-sharp" size={15} color="#007aff" />
-                    <Text style={styles.locationBadgeText}>
-                      Pinning location: {userCoords.latitude.toFixed(5)},{' '}
-                      {userCoords.longitude.toFixed(5)}
+                {/* 500m Radius Circle Status Card */}
+                <View
+                  style={[
+                    styles.radiusCard,
+                    isWithin500m ? styles.radiusCardValid : styles.radiusCardInvalid,
+                  ]}>
+                  <View style={styles.radiusCardHeader}>
+                    <Ionicons
+                      name={isWithin500m ? 'checkmark-circle' : 'alert-circle'}
+                      size={20}
+                      color={isWithin500m ? '#34c759' : '#ff3b30'}
+                    />
+                    <Text
+                      style={[
+                        styles.radiusStatusTitle,
+                        { color: isWithin500m ? '#248a3d' : '#c92a2a' },
+                      ]}>
+                      {isWithin500m
+                        ? `Within 500m Radius (${distance}m away)`
+                        : `Outside 500m Radius (${distance}m away)`}
                     </Text>
+                  </View>
+                  <Text style={styles.radiusDescription}>
+                    {isWithin500m
+                      ? 'The selected problem location is within your 500m reporting zone.'
+                      : 'You are only allowed to report water problems within 500m of your current location.'}
+                  </Text>
+                  {activeProblemCoords && (
+                    <Text style={styles.radiusCoordsText}>
+                      Pin: {activeProblemCoords.latitude.toFixed(5)},{' '}
+                      {activeProblemCoords.longitude.toFixed(5)}
+                    </Text>
+                  )}
+                  <View style={styles.radiusActionsRow}>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      style={styles.radiusActionBtn}
+                      onPress={handleResetToUserLocation}>
+                      <Ionicons name="navigate-outline" size={15} color="#007aff" />
+                      <Text style={styles.radiusActionBtnText}>
+                        Use My Location (0m)
+                      </Text>
+                    </TouchableOpacity>
+                    {onAdjustOnMap && (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={styles.radiusActionBtn}
+                        onPress={handleAdjustOnMap}>
+                        <Ionicons name="map-outline" size={15} color="#007aff" />
+                        <Text style={styles.radiusActionBtnText}>Adjust on Map</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+                {errors.radius && (
+                  <View style={styles.radiusErrorBanner}>
+                    <Ionicons name="alert-circle" size={16} color="#ff3b30" />
+                    <Text style={styles.radiusErrorBannerText}>{errors.radius}</Text>
                   </View>
                 )}
 
@@ -430,7 +635,9 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
                               <Text
                                 style={[
                                   styles.dropdownMenuItemLabel,
-                                  isSelected ? styles.dropdownMenuItemLabelActive : null,
+                                  isSelected
+                                    ? styles.dropdownMenuItemLabelActive
+                                    : null,
                                 ]}>
                                 {item.label}
                               </Text>
@@ -485,7 +692,108 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
                   )}
                 </View>
 
-                {/* 3. Description Paragraph Field */}
+                {/* 3. Address Section */}
+                <View style={styles.addressSectionBox}>
+                  <View style={styles.addressSectionHeader}>
+                    <View style={styles.addressHeaderLeft}>
+                      <Ionicons name="location" size={18} color="#007aff" />
+                      <Text style={styles.addressSectionTitle}>
+                        Problem Address Details
+                      </Text>
+                    </View>
+                    {isFetchingAddress ? (
+                      <View style={styles.autoDetectingRow}>
+                        <ActivityIndicator size="small" color="#007aff" />
+                        <Text style={styles.autoDetectingText}>Fetching...</Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        activeOpacity={0.6}
+                        onPress={handleAutoFetchAddress}
+                        style={styles.autoDetectBtn}
+                        accessibilityLabel="Auto-detect address from pin">
+                        <Ionicons name="locate-outline" size={14} color="#007aff" />
+                        <Text style={styles.autoDetectBtnText}>Auto-detect</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Address Line 1 */}
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>
+                      Address Line 1 <Text style={styles.requiredMark}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.textInput,
+                        errors.addressLine1 ? styles.inputErrorBorder : null,
+                      ]}
+                      placeholder="House / Flat No., Street, Building Name"
+                      placeholderTextColor="#8e8e93"
+                      value={addressLine1}
+                      onChangeText={(val) => {
+                        setAddressLine1(val);
+                        if (errors.addressLine1) {
+                          setErrors((prev) => ({
+                            ...prev,
+                            addressLine1: undefined,
+                          }));
+                        }
+                      }}
+                    />
+                    {errors.addressLine1 && (
+                      <View style={styles.errorRow}>
+                        <Ionicons name="alert-circle" size={14} color="#ff3b30" />
+                        <Text style={styles.errorText}>{errors.addressLine1}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Address Line 2 */}
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.fieldLabel}>Address Line 2</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="Area, Sector, Colony, Locality"
+                      placeholderTextColor="#8e8e93"
+                      value={addressLine2}
+                      onChangeText={setAddressLine2}
+                    />
+                  </View>
+
+                  {/* Landmark */}
+                  <View style={styles.fieldGroupLast}>
+                    <Text style={styles.fieldLabel}>
+                      Landmark <Text style={styles.requiredMark}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.textInput,
+                        errors.landmark ? styles.inputErrorBorder : null,
+                      ]}
+                      placeholder="e.g., Near City Water Tank, Opp. Metro Pillar 42"
+                      placeholderTextColor="#8e8e93"
+                      value={landmark}
+                      onChangeText={(val) => {
+                        setLandmark(val);
+                        if (errors.landmark) {
+                          setErrors((prev) => ({
+                            ...prev,
+                            landmark: undefined,
+                          }));
+                        }
+                      }}
+                    />
+                    {errors.landmark && (
+                      <View style={styles.errorRow}>
+                        <Ionicons name="alert-circle" size={14} color="#ff3b30" />
+                        <Text style={styles.errorText}>{errors.landmark}</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                {/* 4. Description Paragraph Field */}
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>
                     Description of the Problem{' '}
@@ -502,7 +810,10 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
                     onChangeText={(val) => {
                       setDescription(val);
                       if (errors.description) {
-                        setErrors((prev) => ({ ...prev, description: undefined }));
+                        setErrors((prev) => ({
+                          ...prev,
+                          description: undefined,
+                        }));
                       }
                     }}
                     multiline={true}
@@ -517,7 +828,7 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
                   )}
                 </View>
 
-                {/* 4. Photos of the Problem */}
+                {/* 5. Photos of the Problem */}
                 <View style={styles.fieldGroup}>
                   <View style={styles.fieldLabelRow}>
                     <Text style={styles.fieldLabel}>Photos of the Problem</Text>
@@ -590,7 +901,7 @@ export default function ReportModal({ visible, onClose, userCoords, onSubmit }) 
                   )}
                 </View>
 
-                {/* 5. Status of the Problem */}
+                {/* 6. Status of the Problem */}
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>Status of the Problem</Text>
                   <View style={styles.statusGrid}>
@@ -730,31 +1041,143 @@ const styles = StyleSheet.create({
   formContent: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 32,
+    paddingBottom: 36,
   },
 
-  /* Location badge */
-  locationBadge: {
+  /* 500m Radius Status Card */
+  radiusCard: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  radiusCardValid: {
+    borderColor: '#c6f6d5',
+    backgroundColor: '#f0fff4',
+  },
+  radiusCardInvalid: {
+    borderColor: '#fed7d7',
+    backgroundColor: '#fff5f5',
+  },
+  radiusCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f7ff',
-    borderColor: '#cce3ff',
+    gap: 8,
+    marginBottom: 4,
+  },
+  radiusStatusTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  radiusDescription: {
+    fontSize: 12,
+    color: '#4a5568',
+    lineHeight: 17,
+  },
+  radiusCoordsText: {
+    fontSize: 11,
+    color: '#718096',
+    marginTop: 4,
+  },
+  radiusActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  radiusActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
+    borderColor: '#b9dbff',
     borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    gap: 5,
+  },
+  radiusActionBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#007aff',
+  },
+  radiusErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff1f0',
+    borderWidth: 1,
+    borderColor: '#ffa39e',
+    borderRadius: 8,
+    padding: 10,
     marginBottom: 16,
+    gap: 8,
+  },
+  radiusErrorBannerText: {
+    fontSize: 12,
+    color: '#cf1322',
+    fontWeight: '600',
+    flex: 1,
+  },
+
+  /* Address Section Box */
+  addressSectionBox: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e5ea',
+    padding: 14,
+    marginBottom: 20,
+  },
+  addressSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e2e8f0',
+  },
+  addressHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
   },
-  locationBadgeText: {
-    fontSize: 12,
-    color: '#005bb5',
-    fontWeight: '500',
+  addressSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1c1c1e',
+  },
+  autoDetectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eff6ff',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  autoDetectBtnText: {
+    fontSize: 11,
+    color: '#007aff',
+    fontWeight: '600',
+  },
+  autoDetectingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  autoDetectingText: {
+    fontSize: 11,
+    color: '#007aff',
   },
 
   /* Form Groups */
   fieldGroup: {
-    marginBottom: 20,
+    marginBottom: 16,
+  },
+  fieldGroupLast: {
+    marginBottom: 0,
   },
   fieldLabel: {
     fontSize: 14,
@@ -786,7 +1209,7 @@ const styles = StyleSheet.create({
 
   /* Text Inputs */
   textInput: {
-    backgroundColor: '#f9f9fb',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#d1d1d6',
     borderRadius: 10,
@@ -1020,7 +1443,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     height: 50,
     gap: 8,
-    marginTop: 8,
+    marginTop: 10,
     shadowColor: '#007aff',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
@@ -1045,12 +1468,10 @@ const styles = StyleSheet.create({
   },
 
   /* Success Screen */
-  successContainer: {
-    flex: 1,
+  successScrollContent: {
     paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingVertical: 32,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   successIconBubble: {
     width: 80,
@@ -1074,7 +1495,7 @@ const styles = StyleSheet.create({
     color: '#636366',
     textAlign: 'center',
     lineHeight: 20,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   summaryCard: {
     width: '100%',
@@ -1083,23 +1504,24 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#e5e5ea',
-    marginBottom: 24,
+    marginBottom: 20,
     gap: 10,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   summaryLabel: {
     fontSize: 13,
     color: '#8e8e93',
+    width: '40%',
   },
   summaryValue: {
     fontSize: 13,
     color: '#1c1c1e',
     fontWeight: '500',
-    maxWidth: '65%',
+    width: '60%',
+    textAlign: 'right',
   },
 });
-

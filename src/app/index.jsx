@@ -87,6 +87,34 @@ const mapHtml = `<!DOCTYPE html>
           opacity: 0;
         }
       }
+      .problem-marker-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+      .problem-pin {
+        width: 26px;
+        height: 26px;
+        border-radius: 50% 50% 50% 0;
+        background-color: #ff3b30;
+        transform: rotate(-45deg);
+        border: 2px solid #ffffff;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        top: -24px;
+        left: -13px;
+        cursor: pointer;
+      }
+      .problem-pin-inner {
+        width: 8px;
+        height: 8px;
+        background-color: #ffffff;
+        border-radius: 50%;
+      }
     </style>
   </head>
   <body>
@@ -103,6 +131,8 @@ const mapHtml = `<!DOCTYPE html>
       }).addTo(map);
 
       var userMarker = null;
+      var radiusCircle = null;
+      var problemMarker = null;
 
       var userIcon = L.divIcon({
         className: 'user-marker-container',
@@ -111,23 +141,148 @@ const mapHtml = `<!DOCTYPE html>
         iconAnchor: [12, 12]
       });
 
+      var problemIcon = L.divIcon({
+        className: 'problem-marker-container',
+        html: '<div class="problem-pin"><div class="problem-pin-inner"></div></div>',
+        iconSize: [26, 26],
+        iconAnchor: [0, 0]
+      });
+
+      function postToApp(data) {
+        var str = typeof data === 'string' ? data : JSON.stringify(data);
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          window.ReactNativeWebView.postMessage(str);
+        }
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage(data, '*');
+        }
+      }
+
       function setUserLocation(lat, lng) {
         if (!userMarker) {
           userMarker = L.marker([lat, lng], { icon: userIcon, title: 'Your Location' }).addTo(map);
         } else {
           userMarker.setLatLng([lat, lng]);
         }
+
+        // Draw / update 500m radius circle around user
+        if (!radiusCircle) {
+          radiusCircle = L.circle([lat, lng], {
+            radius: 500,
+            color: '#007aff',
+            weight: 2,
+            opacity: 0.85,
+            fillColor: '#007aff',
+            fillOpacity: 0.10,
+            dashArray: '6, 6'
+          }).addTo(map);
+        } else {
+          radiusCircle.setLatLng([lat, lng]);
+        }
+
+        if (!problemMarker) {
+          setProblemLocation(lat, lng, false);
+        }
+
         map.invalidateSize();
         map.flyTo([lat, lng], 16, { animate: true, duration: 1.2 });
       }
 
+      function setProblemLocation(lat, lng, notify) {
+        if (!problemMarker) {
+          problemMarker = L.marker([lat, lng], {
+            icon: problemIcon,
+            draggable: true,
+            title: 'Problem Location'
+          }).addTo(map);
+
+          problemMarker.on('dragend', function(e) {
+            if (!userMarker) return;
+            var pos = e.target.getLatLng();
+            var dist = Math.round(map.distance(userMarker.getLatLng(), pos));
+            if (dist <= 500) {
+              postToApp({
+                type: 'PROBLEM_LOCATION_SET',
+                latitude: pos.lat,
+                longitude: pos.lng,
+                distance: dist,
+                withinRadius: true
+              });
+            } else {
+              var userPos = userMarker.getLatLng();
+              problemMarker.setLatLng(userPos);
+              postToApp({
+                type: 'PROBLEM_LOCATION_OUTSIDE',
+                latitude: pos.lat,
+                longitude: pos.lng,
+                distance: dist,
+                withinRadius: false
+              });
+            }
+          });
+        } else {
+          problemMarker.setLatLng([lat, lng]);
+        }
+
+        if (notify && userMarker) {
+          var dist = Math.round(map.distance(userMarker.getLatLng(), [lat, lng]));
+          postToApp({
+            type: 'PROBLEM_LOCATION_SET',
+            latitude: lat,
+            longitude: lng,
+            distance: dist,
+            withinRadius: dist <= 500
+          });
+        }
+      }
+
+      function resetProblemLocation() {
+        if (userMarker) {
+          var pos = userMarker.getLatLng();
+          setProblemLocation(pos.lat, pos.lng, true);
+        }
+      }
+
+      function fitReportingZone() {
+        if (radiusCircle) {
+          map.fitBounds(radiusCircle.getBounds(), { padding: [40, 40], animate: true });
+        }
+      }
+
+      map.on('click', function(e) {
+        if (!userMarker) return;
+        var userPos = userMarker.getLatLng();
+        var dist = Math.round(map.distance(userPos, e.latlng));
+        if (dist <= 500) {
+          setProblemLocation(e.latlng.lat, e.latlng.lng, true);
+        } else {
+          postToApp({
+            type: 'PROBLEM_LOCATION_OUTSIDE',
+            latitude: e.latlng.lat,
+            longitude: e.latlng.lng,
+            distance: dist,
+            withinRadius: false
+          });
+        }
+      });
+
       window.setUserLocation = setUserLocation;
+      window.setProblemLocation = setProblemLocation;
+      window.resetProblemLocation = resetProblemLocation;
+      window.fitReportingZone = fitReportingZone;
 
       function handleMessage(event) {
         try {
           var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-          if (data && data.type === 'SET_LOCATION') {
+          if (!data) return;
+          if (data.type === 'SET_LOCATION') {
             setUserLocation(data.latitude, data.longitude);
+          } else if (data.type === 'SET_PROBLEM_LOCATION') {
+            setProblemLocation(data.latitude, data.longitude, false);
+          } else if (data.type === 'RESET_PROBLEM_LOCATION') {
+            resetProblemLocation();
+          } else if (data.type === 'FIT_REPORTING_ZONE') {
+            fitReportingZone();
           }
         } catch(e) {}
       }
@@ -145,12 +300,7 @@ const mapHtml = `<!DOCTYPE html>
 
       function notifyReady() {
         refreshSize();
-        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
-        }
-        if (window.parent && window.parent !== window) {
-          window.parent.postMessage({ type: 'MAP_READY' }, '*');
-        }
+        postToApp({ type: 'MAP_READY' });
       }
 
       setTimeout(notifyReady, 100);
@@ -176,6 +326,12 @@ export default function Index() {
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+
+  // Problem coordinates & 500m radius reporting state
+  const [problemCoords, setProblemCoords] = useState(null);
+  const [problemDistance, setProblemDistance] = useState(0);
+  const [mapNotice, setMapNotice] = useState(null);
+  const [isPickingOnMap, setIsPickingOnMap] = useState(false);
 
   // Report modal state
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -234,26 +390,73 @@ export default function Index() {
     }
   }, [isSidebarOpen, sidebarWidth]);
 
-  const sendLocationToMap = (latitude, longitude) => {
+  const sendToMap = (messageObj) => {
     if (Platform.OS === 'web') {
       try {
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: 'SET_LOCATION', latitude, longitude },
-          '*'
-        );
-        iframeRef.current?.contentWindow?.setUserLocation?.(latitude, longitude);
+        iframeRef.current?.contentWindow?.postMessage(messageObj, '*');
+        if (messageObj.type === 'SET_LOCATION') {
+          iframeRef.current?.contentWindow?.setUserLocation?.(
+            messageObj.latitude,
+            messageObj.longitude
+          );
+        } else if (messageObj.type === 'SET_PROBLEM_LOCATION') {
+          iframeRef.current?.contentWindow?.setProblemLocation?.(
+            messageObj.latitude,
+            messageObj.longitude,
+            false
+          );
+        } else if (messageObj.type === 'RESET_PROBLEM_LOCATION') {
+          iframeRef.current?.contentWindow?.resetProblemLocation?.();
+        } else if (messageObj.type === 'FIT_REPORTING_ZONE') {
+          iframeRef.current?.contentWindow?.fitReportingZone?.();
+        }
       } catch (err) {
-        console.warn('Error sending location to web iframe:', err);
+        console.warn('Error sending message to web iframe:', err);
       }
     } else {
       webViewRef.current?.injectJavaScript(`
-        if (typeof setUserLocation === 'function') {
-          setUserLocation(${latitude}, ${longitude});
+        if (typeof handleMessage === 'function') {
+          handleMessage({ data: ${JSON.stringify(messageObj)} });
         }
         true;
       `);
     }
   };
+
+  const sendLocationToMap = (latitude, longitude) => {
+    sendToMap({ type: 'SET_LOCATION', latitude, longitude });
+  };
+
+  const handleMapMessage = (data) => {
+    if (!data) return;
+    if (data.type === 'MAP_READY') {
+      setIsMapReady(true);
+    } else if (data.type === 'PROBLEM_LOCATION_SET') {
+      setProblemCoords({
+        latitude: data.latitude,
+        longitude: data.longitude,
+      });
+      setProblemDistance(data.distance);
+      setMapNotice({
+        type: 'info',
+        message: `Problem pinned ${data.distance}m from you (within 500m circle). Tap + to report.`,
+      });
+    } else if (data.type === 'PROBLEM_LOCATION_OUTSIDE') {
+      setMapNotice({
+        type: 'warning',
+        message: `Outside 500m radius (${data.distance}m away). Please tap inside the blue circle.`,
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (mapNotice) {
+      const timer = setTimeout(() => {
+        setMapNotice(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [mapNotice]);
 
   const requestLocation = async () => {
     try {
@@ -277,6 +480,8 @@ export default function Index() {
       };
 
       setUserCoords(coords);
+      setProblemCoords(coords);
+      setProblemDistance(0);
       sendLocationToMap(coords.latitude, coords.longitude);
     } catch (error) {
       console.warn('Error obtaining location:', error);
@@ -330,9 +535,13 @@ export default function Index() {
   useEffect(() => {
     if (Platform.OS === 'web') {
       const handleWebMessage = (event) => {
-        if (event.data?.type === 'MAP_READY') {
-          setIsMapReady(true);
+        let data = event.data;
+        if (typeof data === 'string') {
+          try {
+            data = JSON.parse(data);
+          } catch (e) {}
         }
+        handleMapMessage(data);
       };
       window.addEventListener('message', handleWebMessage);
       return () => window.removeEventListener('message', handleWebMessage);
@@ -389,9 +598,7 @@ export default function Index() {
                 onMessage={(event) => {
                   try {
                     const data = JSON.parse(event.nativeEvent.data);
-                    if (data.type === 'MAP_READY') {
-                      setIsMapReady(true);
-                    }
+                    handleMapMessage(data);
                   } catch (e) {}
                 }}
                 onLoadEnd={() => {
@@ -406,7 +613,7 @@ export default function Index() {
         )}
       </View>
 
-      {/* Top Floating Search Bar */}
+      {/* Top Floating Search Bar & Notices */}
       <View
         pointerEvents="box-none"
         style={[
@@ -461,6 +668,53 @@ export default function Index() {
           </TouchableOpacity>
         </View>
 
+        {/* Picking Location on Map Banner */}
+        {isPickingOnMap && (
+          <View style={styles.pickingBanner} pointerEvents="auto">
+            <View style={styles.pickingBannerLeft}>
+              <Ionicons name="location" size={16} color="#007aff" />
+              <Text style={styles.pickingBannerText}>
+                Tap inside 500m circle to place pin
+              </Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.pickingBannerBtn}
+              onPress={() => {
+                setIsPickingOnMap(false);
+                setIsReportModalOpen(true);
+              }}>
+              <Text style={styles.pickingBannerBtnText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Map Notice Banner */}
+        {mapNotice && !isPickingOnMap && (
+          <View
+            style={[
+              styles.mapNoticeBanner,
+              mapNotice.type === 'warning' ? styles.mapNoticeWarning : null,
+            ]}
+            pointerEvents="auto">
+            <Ionicons
+              name={
+                mapNotice.type === 'warning'
+                  ? 'alert-circle'
+                  : 'checkmark-circle'
+              }
+              size={16}
+              color={mapNotice.type === 'warning' ? '#d9381e' : '#007aff'}
+            />
+            <Text style={styles.mapNoticeText}>{mapNotice.message}</Text>
+            <TouchableOpacity
+              onPress={() => setMapNotice(null)}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Ionicons name="close" size={15} color="#8e8e93" />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {permissionDenied && (
           <View style={styles.banner} pointerEvents="auto">
             <Text style={styles.bannerText}>
@@ -485,6 +739,24 @@ export default function Index() {
             bottom: insets.bottom + 20,
           },
         ]}>
+        {problemDistance > 0 && problemDistance <= 500 && (
+          <View style={styles.pinnedPill} pointerEvents="auto">
+            <Ionicons name="pin" size={13} color="#ff3b30" />
+            <Text style={styles.pinnedPillText}>{problemDistance}m away</Text>
+            <TouchableOpacity
+              onPress={() => {
+                if (userCoords) {
+                  setProblemCoords(userCoords);
+                  setProblemDistance(0);
+                  sendToMap({ type: 'RESET_PROBLEM_LOCATION' });
+                }
+              }}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Ionicons name="close-circle" size={14} color="#8e8e93" />
+            </TouchableOpacity>
+          </View>
+        )}
+
         <TouchableOpacity
           activeOpacity={0.7}
           style={styles.addReportButton}
@@ -513,8 +785,22 @@ export default function Index() {
         visible={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
         userCoords={userCoords}
+        problemCoords={problemCoords || userCoords}
+        onAdjustOnMap={() => {
+          setIsReportModalOpen(false);
+          setIsPickingOnMap(true);
+          sendToMap({ type: 'FIT_REPORTING_ZONE' });
+        }}
+        onResetProblemLocation={() => {
+          if (userCoords) {
+            setProblemCoords(userCoords);
+            setProblemDistance(0);
+            sendToMap({ type: 'RESET_PROBLEM_LOCATION' });
+          }
+        }}
         onSubmit={(report) => {
           console.log('New water problem report submitted:', report);
+          setIsPickingOnMap(false);
         }}
       />
 
@@ -667,6 +953,81 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  /* Picking Banner */
+  pickingBanner: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
+    elevation: 4,
+    width: '100%',
+    maxWidth: 580,
+    borderLeftWidth: 4,
+    borderLeftColor: '#007aff',
+  },
+  pickingBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  pickingBannerText: {
+    fontSize: 13,
+    color: '#1c1c1e',
+    fontWeight: '500',
+  },
+  pickingBannerBtn: {
+    backgroundColor: '#007aff',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 7,
+  },
+  pickingBannerBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  /* Map Notice Banner */
+  mapNoticeBanner: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    elevation: 3,
+    width: '100%',
+    maxWidth: 580,
+    gap: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#007aff',
+  },
+  mapNoticeWarning: {
+    borderLeftColor: '#ff3b30',
+    backgroundColor: '#fff7f7',
+  },
+  mapNoticeText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#333333',
+    fontWeight: '500',
+  },
+
   /* Bottom Controls */
   bottomControls: {
     position: 'absolute',
@@ -675,6 +1036,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  pinnedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#ffd2cf',
+  },
+  pinnedPillText: {
+    fontSize: 12,
+    color: '#d9381e',
+    fontWeight: '600',
   },
   addReportButton: {
     width: 50,
