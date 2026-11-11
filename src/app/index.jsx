@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
@@ -100,10 +101,6 @@ const mapHtml = `<!DOCTYPE html>
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
 
-      try {
-        L.control.zoom({ position: 'bottomleft' }).addTo(map);
-      } catch (e) {}
-
       var userMarker = null;
 
       var userIcon = L.divIcon({
@@ -120,7 +117,7 @@ const mapHtml = `<!DOCTYPE html>
           userMarker.setLatLng([lat, lng]);
         }
         map.invalidateSize();
-        map.flyTo([lat, lng], 16, { animate: true, duration: 1.5 });
+        map.flyTo([lat, lng], 16, { animate: true, duration: 1.2 });
       }
 
       window.setUserLocation = setUserLocation;
@@ -161,16 +158,6 @@ const mapHtml = `<!DOCTYPE html>
     </script>
   </body>
 </html>`;
-
-function HamburgerIcon() {
-  return (
-    <View style={styles.hamburgerContainer} pointerEvents="none">
-      <View style={styles.hamburgerBar} />
-      <View style={styles.hamburgerBar} />
-      <View style={styles.hamburgerBar} />
-    </View>
-  );
-}
 
 export default function Index() {
   const insets = useSafeAreaInsets();
@@ -291,6 +278,15 @@ export default function Index() {
       console.warn('Error obtaining location:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleLocateMe = () => {
+    if (userCoords) {
+      // Instantly center on user's known location without delay or spinner
+      sendLocationToMap(userCoords.latitude, userCoords.longitude);
+    } else {
+      requestLocation();
     }
   };
 
@@ -423,7 +419,7 @@ export default function Index() {
             style={styles.hamburgerButton}
             accessibilityLabel="Open sidebar"
             accessibilityRole="button">
-            <HamburgerIcon />
+            <Ionicons name="menu" size={26} color="#2c3e50" />
           </TouchableOpacity>
 
           <TextInput
@@ -443,7 +439,7 @@ export default function Index() {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={styles.iconButton}
               accessibilityLabel="Clear search">
-              <Text style={styles.clearText}>✕</Text>
+              <Ionicons name="close-circle" size={19} color="#8e8e93" />
             </TouchableOpacity>
           )}
 
@@ -456,7 +452,7 @@ export default function Index() {
             {isSearching ? (
               <ActivityIndicator size="small" color="#007aff" />
             ) : (
-              <Text style={styles.searchIconText}>🔍</Text>
+              <Ionicons name="search" size={21} color="#333333" />
             )}
           </TouchableOpacity>
         </View>
@@ -488,17 +484,17 @@ export default function Index() {
         <TouchableOpacity
           activeOpacity={0.7}
           style={styles.locationButton}
-          onPress={requestLocation}
+          onPress={handleLocateMe}
           accessibilityLabel="Locate me">
-          {isLoading ? (
+          {isLoading && !userCoords ? (
             <ActivityIndicator size="small" color="#007aff" />
           ) : (
-            <Text style={styles.locationIcon}>📍</Text>
+            <Ionicons name="location-sharp" size={26} color="#007aff" />
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Sidebar Modal Overlay (Cross-platform top-level portal) */}
+      {/* Sidebar Modal Overlay */}
       <Modal
         visible={isSidebarOpen}
         transparent={true}
@@ -536,7 +532,7 @@ export default function Index() {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 style={styles.closeButton}
                 accessibilityLabel="Close sidebar">
-                <Text style={styles.closeButtonText}>✕</Text>
+                <Ionicons name="close" size={22} color="#333333" />
               </TouchableOpacity>
             </View>
 
@@ -598,18 +594,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 22,
   },
-  hamburgerContainer: {
-    width: 20,
-    height: 14,
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  hamburgerBar: {
-    width: 20,
-    height: 2.2,
-    backgroundColor: '#333333',
-    borderRadius: 2,
-  },
   searchInput: {
     flex: 1,
     height: '100%',
@@ -623,14 +607,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 19,
-  },
-  clearText: {
-    fontSize: 14,
-    color: '#8e8e93',
-    fontWeight: 'bold',
-  },
-  searchIconText: {
-    fontSize: 16,
   },
 
   /* Permission Banner */
@@ -686,9 +662,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 5,
   },
-  locationIcon: {
-    fontSize: 22,
-  },
 
   /* Modal & Sidebar Drawer */
   modalRoot: {
@@ -733,11 +706,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f2f2f7',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  closeButtonText: {
-    fontSize: 15,
-    color: '#3a3a3c',
-    fontWeight: '600',
   },
   sidebarContent: {
     flex: 1,
