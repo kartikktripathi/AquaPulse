@@ -428,7 +428,7 @@ export default function Index() {
 
           <TextInput
             style={styles.searchInput}
-            placeholder="Search OpenStreetMap..."
+            placeholder="Search on AquaPulse"
             placeholderTextColor="#8e8e93"
             value={searchQuery}
             onChangeText={setSearchQuery}
