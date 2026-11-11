@@ -1,42 +1,50 @@
 import * as Location from 'expo-location';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Modal,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const mapHtml = `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin=""
-    />
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""
-    ></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
       }
-      html, body, #map {
+      html, body {
         width: 100%;
         height: 100%;
+        margin: 0;
+        padding: 0;
         overflow: hidden;
-        background-color: #e5e3df;
+        background-color: #f2efe9;
+      }
+      #map {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #f2efe9;
       }
       .user-marker-container {
         display: flex;
@@ -83,7 +91,7 @@ const mapHtml = `<!DOCTYPE html>
     <div id="map"></div>
     <script>
       var map = L.map('map', {
-        zoomControl: true,
+        zoomControl: false,
         attributionControl: true
       }).setView([20, 0], 2);
 
@@ -91,6 +99,10 @@ const mapHtml = `<!DOCTYPE html>
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
+
+      try {
+        L.control.zoom({ position: 'bottomleft' }).addTo(map);
+      } catch (e) {}
 
       var userMarker = null;
 
@@ -107,8 +119,11 @@ const mapHtml = `<!DOCTYPE html>
         } else {
           userMarker.setLatLng([lat, lng]);
         }
+        map.invalidateSize();
         map.flyTo([lat, lng], 16, { animate: true, duration: 1.5 });
       }
+
+      window.setUserLocation = setUserLocation;
 
       function handleMessage(event) {
         try {
@@ -122,8 +137,16 @@ const mapHtml = `<!DOCTYPE html>
       window.addEventListener('message', handleMessage);
       document.addEventListener('message', handleMessage);
 
+      function refreshSize() {
+        if (map) {
+          map.invalidateSize();
+        }
+      }
+
+      window.addEventListener('resize', refreshSize);
+
       function notifyReady() {
-        map.invalidateSize();
+        refreshSize();
         if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
           window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
         }
@@ -132,18 +155,93 @@ const mapHtml = `<!DOCTYPE html>
         }
       }
 
-      setTimeout(notifyReady, 350);
+      setTimeout(notifyReady, 100);
+      setTimeout(refreshSize, 400);
+      setTimeout(refreshSize, 1000);
     </script>
   </body>
 </html>`;
 
+function HamburgerIcon() {
+  return (
+    <View style={styles.hamburgerContainer} pointerEvents="none">
+      <View style={styles.hamburgerBar} />
+      <View style={styles.hamburgerBar} />
+      <View style={styles.hamburgerBar} />
+    </View>
+  );
+}
+
 export default function Index() {
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const sidebarWidth = Math.min(windowWidth * 0.78, 320);
+
   const webViewRef = useRef(null);
   const iframeRef = useRef(null);
+
   const [isMapReady, setIsMapReady] = useState(false);
   const [userCoords, setUserCoords] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Sidebar state & animations
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const isOpeningRef = useRef(false);
+
+  const slideAnim = useRef(new Animated.Value(-sidebarWidth)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const openSidebar = () => {
+    setIsSidebarOpen(true);
+  };
+
+  const closeSidebar = () => {
+    if (isOpeningRef.current) return;
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: -sidebarWidth,
+        duration: 220,
+        useNativeDriver: Platform.OS !== 'web',
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: Platform.OS !== 'web',
+      }),
+    ]).start(() => {
+      setIsSidebarOpen(false);
+    });
+  };
+
+  useEffect(() => {
+    if (isSidebarOpen) {
+      slideAnim.setValue(-sidebarWidth);
+      fadeAnim.setValue(0);
+      isOpeningRef.current = true;
+
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+      ]).start(() => {
+        setTimeout(() => {
+          isOpeningRef.current = false;
+        }, 50);
+      });
+    }
+  }, [isSidebarOpen, sidebarWidth]);
 
   const sendLocationToMap = (latitude, longitude) => {
     if (Platform.OS === 'web') {
@@ -152,8 +250,9 @@ export default function Index() {
           { type: 'SET_LOCATION', latitude, longitude },
           '*'
         );
+        iframeRef.current?.contentWindow?.setUserLocation?.(latitude, longitude);
       } catch (err) {
-        console.warn('Error posting message to web iframe:', err);
+        console.warn('Error sending location to web iframe:', err);
       }
     } else {
       webViewRef.current?.injectJavaScript(`
@@ -195,6 +294,35 @@ export default function Index() {
     }
   };
 
+  const handleSearch = async () => {
+    const query = searchQuery.trim();
+    if (!query) return;
+
+    try {
+      setIsSearching(true);
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          query
+        )}&limit=1`,
+        {
+          headers: {
+            'User-Agent': 'AquaPulse-App',
+          },
+        }
+      );
+      const results = await res.json();
+      if (results && results.length > 0) {
+        const lat = parseFloat(results[0].lat);
+        const lon = parseFloat(results[0].lon);
+        sendLocationToMap(lat, lon);
+      }
+    } catch (err) {
+      console.warn('Search geocoding error:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   useEffect(() => {
     requestLocation();
   }, []);
@@ -219,79 +347,204 @@ export default function Index() {
 
   return (
     <View style={styles.container}>
-      {Platform.OS === 'web' ? (
-        <iframe
-          ref={iframeRef}
-          title="OpenStreetMap"
-          srcDoc={mapHtml}
-          style={{ width: '100%', height: '100%', border: 'none' }}
-          onLoad={() => {
-            setIsMapReady(true);
-            if (userCoords) {
-              sendLocationToMap(userCoords.latitude, userCoords.longitude);
-            }
-          }}
-        />
-      ) : (
-        (() => {
-          const { WebView } = require('react-native-webview');
-          return (
-            <WebView
-              ref={webViewRef}
-              originWhitelist={['*']}
-              source={{ html: mapHtml }}
-              style={styles.map}
-              javaScriptEnabled
-              domStorageEnabled
-              startInLoadingState
-              onMessage={(event) => {
-                try {
-                  const data = JSON.parse(event.nativeEvent.data);
-                  if (data.type === 'MAP_READY') {
-                    setIsMapReady(true);
+      <StatusBar style="dark" translucent backgroundColor="transparent" />
+
+      {/* Map layer - takes full screen */}
+      <View style={styles.mapContainer}>
+        {Platform.OS === 'web' ? (
+          <iframe
+            ref={iframeRef}
+            title="OpenStreetMap"
+            srcDoc={mapHtml}
+            style={{
+              width: '100%',
+              height: '100%',
+              border: 'none',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }}
+            onLoad={() => {
+              setIsMapReady(true);
+              if (userCoords) {
+                sendLocationToMap(userCoords.latitude, userCoords.longitude);
+              }
+            }}
+          />
+        ) : (
+          (() => {
+            const { WebView } = require('react-native-webview');
+            return (
+              <WebView
+                ref={webViewRef}
+                originWhitelist={['*']}
+                source={{ html: mapHtml }}
+                style={styles.map}
+                containerStyle={styles.map}
+                javaScriptEnabled
+                domStorageEnabled
+                startInLoadingState
+                onMessage={(event) => {
+                  try {
+                    const data = JSON.parse(event.nativeEvent.data);
+                    if (data.type === 'MAP_READY') {
+                      setIsMapReady(true);
+                    }
+                  } catch (e) {}
+                }}
+                onLoadEnd={() => {
+                  setIsMapReady(true);
+                  if (userCoords) {
+                    sendLocationToMap(userCoords.latitude, userCoords.longitude);
                   }
-                } catch (e) {}
-              }}
-              onLoadEnd={() => {
-                setIsMapReady(true);
-                if (userCoords) {
-                  sendLocationToMap(userCoords.latitude, userCoords.longitude);
-                }
-              }}
-            />
-          );
-        })()
-      )}
-
-      {/* Floating Controls Overlay */}
-      <SafeAreaView pointerEvents="box-none" style={styles.overlay}>
-        {permissionDenied && (
-          <View style={styles.banner}>
-            <Text style={styles.bannerText}>
-              Location permission was denied. Tap below to retry.
-            </Text>
-            <Pressable style={styles.bannerButton} onPress={requestLocation}>
-              <Text style={styles.bannerButtonText}>Enable Location</Text>
-            </Pressable>
-          </View>
+                }}
+              />
+            );
+          })()
         )}
+      </View>
 
-        <View style={styles.bottomBar}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.locationButton,
-              pressed && styles.locationButtonPressed,
-            ]}
-            onPress={requestLocation}
-            accessibilityLabel="Locate me">
-            {isLoading ? (
+      {/* Top Floating Search Bar */}
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.searchBarWrapper,
+          {
+            top: insets.top + (Platform.OS === 'web' ? 16 : 10),
+          },
+        ]}>
+        <View style={styles.searchBar} pointerEvents="auto">
+          <TouchableOpacity
+            onPress={openSidebar}
+            activeOpacity={0.6}
+            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+            style={styles.hamburgerButton}
+            accessibilityLabel="Open sidebar"
+            accessibilityRole="button">
+            <HamburgerIcon />
+          </TouchableOpacity>
+
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search OpenStreetMap..."
+            placeholderTextColor="#8e8e93"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            onSubmitEditing={handleSearch}
+          />
+
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchQuery('')}
+              activeOpacity={0.6}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.iconButton}
+              accessibilityLabel="Clear search">
+              <Text style={styles.clearText}>✕</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            onPress={handleSearch}
+            activeOpacity={0.6}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.iconButton}
+            accessibilityLabel="Search location">
+            {isSearching ? (
               <ActivityIndicator size="small" color="#007aff" />
             ) : (
-              <Text style={styles.locationIcon}>📍</Text>
+              <Text style={styles.searchIconText}>🔍</Text>
             )}
-          </Pressable>
+          </TouchableOpacity>
         </View>
-      </SafeAreaView>
+
+        {permissionDenied && (
+          <View style={styles.banner} pointerEvents="auto">
+            <Text style={styles.bannerText}>
+              Location permission was denied.
+            </Text>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.bannerButton}
+              onPress={requestLocation}>
+              <Text style={styles.bannerButtonText}>Enable</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* Floating Bottom Locate Button */}
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.bottomControls,
+          {
+            bottom: insets.bottom + 20,
+          },
+        ]}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={styles.locationButton}
+          onPress={requestLocation}
+          accessibilityLabel="Locate me">
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#007aff" />
+          ) : (
+            <Text style={styles.locationIcon}>📍</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Sidebar Modal Overlay (Cross-platform top-level portal) */}
+      <Modal
+        visible={isSidebarOpen}
+        transparent={true}
+        animationType="none"
+        onRequestClose={closeSidebar}
+        statusBarTranslucent={true}>
+        <View style={styles.modalRoot}>
+          {/* Backdrop */}
+          <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={StyleSheet.absoluteFillObject}
+              onPress={closeSidebar}
+              accessibilityLabel="Close sidebar overlay"
+            />
+          </Animated.View>
+
+          {/* Drawer Panel */}
+          <Animated.View
+            style={[
+              styles.sidebarDrawer,
+              {
+                width: sidebarWidth,
+                transform: [{ translateX: slideAnim }],
+                paddingTop: insets.top + (Platform.OS === 'web' ? 20 : 12),
+                paddingBottom: insets.bottom + 16,
+              },
+            ]}>
+            {/* Header */}
+            <View style={styles.sidebarHeader}>
+              <Text style={styles.sidebarTitle}>AquaPulse</Text>
+              <TouchableOpacity
+                onPress={closeSidebar}
+                activeOpacity={0.6}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={styles.closeButton}
+                accessibilityLabel="Close sidebar">
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Empty Sidebar Content */}
+            <View style={styles.sidebarContent} />
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -299,49 +552,126 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#f2efe9',
+    position: 'relative',
+  },
+  mapContainer: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   map: {
     flex: 1,
+    width: '100%',
+    height: '100%',
   },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  banner: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 12,
-    padding: 14,
+
+  /* Search Bar */
+  searchBarWrapper: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 100,
     alignItems: 'center',
-    gap: 8,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 25,
+    height: 50,
+    width: '100%',
+    maxWidth: 580,
+    paddingHorizontal: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  hamburgerButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 22,
+  },
+  hamburgerContainer: {
+    width: 20,
+    height: 14,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hamburgerBar: {
+    width: 20,
+    height: 2.2,
+    backgroundColor: '#333333',
+    borderRadius: 2,
+  },
+  searchInput: {
+    flex: 1,
+    height: '100%',
+    fontSize: 16,
+    color: '#1c1c1e',
+    paddingHorizontal: 10,
+  },
+  iconButton: {
+    width: 38,
+    height: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 19,
+  },
+  clearText: {
+    fontSize: 14,
+    color: '#8e8e93',
+    fontWeight: 'bold',
+  },
+  searchIconText: {
+    fontSize: 16,
+  },
+
+  /* Permission Banner */
+  banner: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
-    marginHorizontal: 8,
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 3,
+    width: '100%',
+    maxWidth: 580,
   },
   bannerText: {
-    fontSize: 14,
-    color: '#333',
-    textAlign: 'center',
+    fontSize: 13,
+    color: '#444',
   },
   bannerButton: {
     backgroundColor: '#007aff',
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 6,
   },
   bannerButtonText: {
     color: '#ffffff',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
-  bottomBar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginBottom: 8,
-    marginRight: 4,
+
+  /* Bottom Controls */
+  bottomControls: {
+    position: 'absolute',
+    right: 16,
+    zIndex: 100,
   },
   locationButton: {
     width: 50,
@@ -351,16 +681,66 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
     elevation: 5,
-  },
-  locationButtonPressed: {
-    backgroundColor: '#f0f0f0',
-    transform: [{ scale: 0.95 }],
   },
   locationIcon: {
     fontSize: 22,
+  },
+
+  /* Modal & Sidebar Drawer */
+  modalRoot: {
+    flex: 1,
+    position: 'relative',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  sidebarDrawer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    height: '100%',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 3, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 25,
+  },
+  sidebarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e5ea',
+  },
+  sidebarTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1c1c1e',
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f2f2f7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: 15,
+    color: '#3a3a3c',
+    fontWeight: '600',
+  },
+  sidebarContent: {
+    flex: 1,
+    paddingVertical: 20,
   },
 });
