@@ -9,14 +9,18 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "AquaPulse needs your location to show where you are on the map."
+        "NSLocationWhenInUseUsageDescription": "AquaPulse needs your location to show where you are on the map.",
+        "NSCameraUsageDescription": "AquaPulse needs camera access to photograph water issues.",
+        "NSPhotoLibraryUsageDescription": "AquaPulse needs photo library access to upload photos of water issues."
       }
     },
     "android": {
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE"
       ]
     },
     "plugins": [
@@ -25,6 +29,13 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "AquaPulse needs your location to show where you are on the map."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AquaPulse needs photo library access to upload photos of water issues.",
+          "cameraPermission": "AquaPulse needs camera access to photograph water issues."
         }
       ]
     ],

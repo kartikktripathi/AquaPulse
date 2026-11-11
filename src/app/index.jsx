@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ReportModal from '../components/ReportModal';
 
 const mapHtml = `<!DOCTYPE html>
 <html>
@@ -175,6 +176,9 @@ export default function Index() {
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+
+  // Report modal state
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   // Sidebar state & animations
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -472,7 +476,7 @@ export default function Index() {
         )}
       </View>
 
-      {/* Floating Bottom Locate Button */}
+      {/* Floating Bottom Action Buttons (+ Report Button and Locate Button) */}
       <View
         pointerEvents="box-none"
         style={[
@@ -483,9 +487,19 @@ export default function Index() {
         ]}>
         <TouchableOpacity
           activeOpacity={0.7}
+          style={styles.addReportButton}
+          onPress={() => setIsReportModalOpen(true)}
+          accessibilityLabel="Report water problem"
+          accessibilityRole="button">
+          <Ionicons name="add" size={28} color="#ffffff" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.7}
           style={styles.locationButton}
           onPress={handleLocateMe}
-          accessibilityLabel="Locate me">
+          accessibilityLabel="Locate me"
+          accessibilityRole="button">
           {isLoading && !userCoords ? (
             <ActivityIndicator size="small" color="#007aff" />
           ) : (
@@ -493,6 +507,16 @@ export default function Index() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Water Problem Report Modal */}
+      <ReportModal
+        visible={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        userCoords={userCoords}
+        onSubmit={(report) => {
+          console.log('New water problem report submitted:', report);
+        }}
+      />
 
       {/* Sidebar Modal Overlay */}
       <Modal
@@ -648,6 +672,22 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     zIndex: 100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  addReportButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#007aff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.28,
+    shadowRadius: 6,
+    elevation: 6,
   },
   locationButton: {
     width: 50,
