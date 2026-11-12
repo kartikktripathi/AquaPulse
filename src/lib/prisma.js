@@ -4,8 +4,7 @@ import pg from 'pg';
 
 function createPrismaClient() {
   const connectionString =
-    process.env.DATABASE_URL ||
-    'postgres://postgres:himanshu@localhost:5432/aquapulse';
+    process.env.DATABASE_URL;
   const pool = new pg.Pool({ connectionString });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
