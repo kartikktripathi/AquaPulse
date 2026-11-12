@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,51 +17,18 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FILTER_CATEGORIES } from '../utils/categoryMeta';
 import { saveReportToDatabase } from '../services/reportService';
 import { calculateDistanceMeters, reverseGeocode } from '../utils/geo';
+import {
+  DEPTH_OPTIONS,
+  PEOPLE_OPTIONS,
+  ROAD_OPTIONS,
+  SEVERITY_META,
+  getSeverity,
+} from '../utils/severity';
 
-export const PROBLEM_CATEGORIES = [
-  { id: 'pipe_burst', label: 'Pipe Burst / Major Leak', icon: 'water-outline' },
-  { id: 'contamination', label: 'Contaminated / Dirty Water', icon: 'warning-outline' },
-  { id: 'low_pressure', label: 'Low Pressure / No Water Supply', icon: 'speedometer-outline' },
-  { id: 'drainage_overflow', label: 'Sewage / Drainage Overflow', icon: 'alert-circle-outline' },
-  { id: 'waterlogging', label: 'Waterlogging / Street Flooding', icon: 'rainy-outline' },
-  { id: 'water_wastage', label: 'Water Wastage / Open Fire Hydrant', icon: 'hourglass-outline' },
-  { id: 'meter_fault', label: 'Damaged Meter / Pipeline Fault', icon: 'build-outline' },
-  { id: 'tanker_disruption', label: 'Disrupted Water Tanker Supply', icon: 'car-outline' },
-  { id: 'other', label: 'Other', icon: 'ellipsis-horizontal-circle-outline' },
-];
-
-export const PROBLEM_STATUSES = [
-  {
-    id: 'reported',
-    label: 'Reported / No Resolution',
-    icon: 'alert-circle-outline',
-    color: '#ff3b30',
-    bgColor: '#fff1f0',
-  },
-  {
-    id: 'review',
-    label: 'Under Review',
-    icon: 'time-outline',
-    color: '#ff9500',
-    bgColor: '#fff8ed',
-  },
-  {
-    id: 'in_progress',
-    label: 'Getting Fixed / In Progress',
-    icon: 'construct-outline',
-    color: '#007aff',
-    bgColor: '#eff6ff',
-  },
-  {
-    id: 'fixed',
-    label: 'Fixed / Resolved',
-    icon: 'checkmark-circle-outline',
-    color: '#34c759',
-    bgColor: '#eefbf2',
-  },
-];
+const FORM_CATEGORIES = FILTER_CATEGORIES.filter((c) => c.id !== 'all');
 
 export default function ReportModal({
   visible,
@@ -75,7 +43,6 @@ export default function ReportModal({
 
   const [problemName, setProblemName] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [customCategory, setCustomCategory] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Address fields
@@ -86,7 +53,10 @@ export default function ReportModal({
 
   const [description, setDescription] = useState('');
   const [photos, setPhotos] = useState([]);
-  const [status, setStatus] = useState(PROBLEM_STATUSES[0].id);
+  const [waterDepth, setWaterDepth] = useState(null);
+  const [peopleAffected, setPeopleAffected] = useState(null);
+  const [roadBlocked, setRoadBlocked] = useState(null);
+  const [submitError, setSubmitError] = useState(null);
 
   const [isProcessingPhotos, setIsProcessingPhotos] = useState(false);
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
@@ -165,14 +135,16 @@ export default function ReportModal({
   const resetForm = () => {
     setProblemName('');
     setSelectedCategory(null);
-    setCustomCategory('');
     setIsDropdownOpen(false);
     setAddressLine1('');
     setAddressLine2('');
     setLandmark('');
     setDescription('');
     setPhotos([]);
-    setStatus(PROBLEM_STATUSES[0].id);
+    setWaterDepth(null);
+    setPeopleAffected(null);
+    setRoadBlocked(null);
+    setSubmitError(null);
     setErrors({});
     setIsSubmitted(false);
   };
@@ -209,13 +181,15 @@ export default function ReportModal({
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
-        quality: 0.8,
+        quality: 0.5,
         allowsEditing: false,
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        const newUri = result.assets[0].uri;
-        setPhotos((prev) => [...prev, newUri]);
+        const asset = result.assets[0];
+        const dataUri = `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`;
+        setPhotos((prev) => [...prev, dataUri]);
       }
     } catch (err) {
       console.warn('Camera capture error:', err);
@@ -240,11 +214,14 @@ export default function ReportModal({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
-        quality: 0.8,
+        quality: 0.5,
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        const pickedUris = result.assets.map((asset) => asset.uri);
+        const pickedUris = result.assets.map(
+          (asset) => `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
+        );
         setPhotos((prev) => {
           const combined = [...prev];
           for (const uri of pickedUris) {
@@ -270,13 +247,9 @@ export default function ReportModal({
   const handleSelectCategory = (categoryItem) => {
     setSelectedCategory(categoryItem);
     setIsDropdownOpen(false);
-    if (categoryItem.id !== 'other') {
-      setCustomCategory('');
-    }
     setErrors((prev) => ({
       ...prev,
       category: undefined,
-      customCategory: undefined,
     }));
   };
 
@@ -289,8 +262,6 @@ export default function ReportModal({
 
     if (!selectedCategory) {
       newErrors.category = 'Please choose a category from the dropdown.';
-    } else if (selectedCategory.id === 'other' && !customCategory.trim()) {
-      newErrors.customCategory = 'Please specify the custom category.';
     }
 
     if (!addressLine1.trim()) {
@@ -305,6 +276,18 @@ export default function ReportModal({
       newErrors.description = 'Please describe the water problem in detail.';
     }
 
+    if (!waterDepth) {
+      newErrors.waterDepth = 'Please select the water depth.';
+    }
+
+    if (!peopleAffected) {
+      newErrors.peopleAffected = 'Please select how many people are affected.';
+    }
+
+    if (!roadBlocked) {
+      newErrors.roadBlocked = 'Please indicate whether the road is blocked.';
+    }
+
     // 500m Radius Circle Constraint
     if (distance > 500) {
       newErrors.radius = `Problem location is ${distance}m away. It must be within 500m of where you are.`;
@@ -315,36 +298,48 @@ export default function ReportModal({
       return;
     }
 
+    const severity = getSeverity({ waterDepth, peopleAffected, roadBlocked });
+
     const reportData = {
-      id: Date.now().toString(),
       name: problemName.trim(),
       categoryId: selectedCategory.id,
-      categoryLabel:
-        selectedCategory.id === 'other'
-          ? customCategory.trim()
-          : selectedCategory.label,
-      address: {
-        line1: addressLine1.trim(),
-        line2: addressLine2.trim(),
-        landmark: landmark.trim(),
-      },
+      categoryLabel: selectedCategory.label,
+      addressLine1: addressLine1.trim(),
+      addressLine2: addressLine2.trim(),
+      landmark: landmark.trim(),
       description: description.trim(),
       photos,
-      status,
-      coordinates: activeProblemCoords || null,
-      userCoordinates: userCoords || null,
+      latitude: activeProblemCoords ? activeProblemCoords.latitude : null,
+      longitude: activeProblemCoords ? activeProblemCoords.longitude : null,
+      userLatitude: userCoords ? userCoords.latitude : null,
+      userLongitude: userCoords ? userCoords.longitude : null,
       distanceFromUser: distance,
-      createdAt: new Date().toISOString(),
+      waterDepth,
+      peopleAffected,
+      roadBlocked,
+      severity,
     };
 
+    setSubmitError(null);
     setIsSubmittingReport(true);
     try {
-      await saveReportToDatabase(reportData);
+      const result = await saveReportToDatabase(reportData);
+      if (!result.success) {
+        setSubmitError(
+          result.error === 'Failed to fetch'
+            ? 'Submission failed due to a network error. Tap Try again.'
+            : result.error || 'Submission failed due to a network error. Tap Try again.'
+        );
+        setIsSubmittingReport(false);
+        return;
+      }
     } catch (saveError) {
       console.warn('Database save warning:', saveError);
-    } finally {
+      setSubmitError('Submission failed due to a network error. Tap Try again.');
       setIsSubmittingReport(false);
+      return;
     }
+    setIsSubmittingReport(false);
 
     if (onSubmit) {
       onSubmit(reportData);
@@ -352,9 +347,6 @@ export default function ReportModal({
 
     setIsSubmitted(true);
   };
-
-  const activeStatusObj =
-    PROBLEM_STATUSES.find((s) => s.id === status) || PROBLEM_STATUSES[0];
 
   return (
     <Modal
@@ -418,9 +410,7 @@ export default function ReportModal({
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Category:</Text>
                     <Text style={styles.summaryValue}>
-                      {selectedCategory?.id === 'other'
-                        ? customCategory
-                        : selectedCategory?.label}
+                      {selectedCategory?.label}
                     </Text>
                   </View>
                   <View style={styles.summaryRow}>
@@ -450,13 +440,20 @@ export default function ReportModal({
                     </Text>
                   </View>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Status:</Text>
+                    <Text style={styles.summaryLabel}>Severity:</Text>
                     <Text
                       style={[
                         styles.summaryValue,
-                        { color: activeStatusObj.color, fontWeight: '600' },
+                        {
+                          color: waterDepth && peopleAffected && roadBlocked
+                            ? SEVERITY_META[getSeverity({ waterDepth, peopleAffected, roadBlocked })].color
+                            : '#8e8e93',
+                          fontWeight: '600',
+                        },
                       ]}>
-                      {activeStatusObj.label}
+                      {waterDepth && peopleAffected && roadBlocked
+                        ? SEVERITY_META[getSeverity({ waterDepth, peopleAffected, roadBlocked })].label
+                        : '—'}
                     </Text>
                   </View>
                   {photos.length > 0 && (
@@ -626,7 +623,7 @@ export default function ReportModal({
                   {/* Dropdown Options List */}
                   {isDropdownOpen && (
                     <View style={styles.dropdownMenu}>
-                      {PROBLEM_CATEGORIES.map((item) => {
+                      {FORM_CATEGORIES.map((item) => {
                         const isSelected = selectedCategory?.id === item.id;
                         return (
                           <TouchableOpacity
@@ -665,43 +662,122 @@ export default function ReportModal({
                       })}
                     </View>
                   )}
+                </View>
 
-                  {/* If Other selected, required custom category input */}
-                  {selectedCategory?.id === 'other' && (
-                    <View style={styles.otherInputWrapper}>
-                      <Text style={styles.subFieldLabel}>
-                        Specify Custom Category{' '}
-                        <Text style={styles.requiredMark}>*</Text>
-                      </Text>
-                      <TextInput
-                        style={[
-                          styles.textInput,
-                          errors.customCategory ? styles.inputErrorBorder : null,
-                        ]}
-                        placeholder="Write the specific water problem category..."
-                        placeholderTextColor="#8e8e93"
-                        value={customCategory}
-                        onChangeText={(val) => {
-                          setCustomCategory(val);
-                          if (errors.customCategory) {
-                            setErrors((prev) => ({
-                              ...prev,
-                              customCategory: undefined,
-                            }));
-                          }
-                        }}
-                      />
-                      {errors.customCategory && (
-                        <View style={styles.errorRow}>
-                          <Ionicons name="alert-circle" size={14} color="#ff3b30" />
-                          <Text style={styles.errorText}>
-                            {errors.customCategory}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>
+                    Water Depth <Text style={styles.requiredMark}>*</Text>
+                  </Text>
+                  <View style={styles.cueChipRow}>
+                    {DEPTH_OPTIONS.map((opt) => {
+                      const sel = waterDepth === opt.id;
+                      return (
+                        <Pressable
+                          key={opt.id}
+                          style={({ pressed }) => [
+                            styles.cueChip,
+                            sel && styles.cueChipSelected,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                          onPress={() => {
+                            setWaterDepth(opt.id);
+                            setErrors((prev) => ({ ...prev, waterDepth: undefined }));
+                          }}>
+                          <Text style={[styles.cueChipText, sel && styles.cueChipTextSelected]}>
+                            {opt.label}
                           </Text>
-                        </View>
-                      )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {errors.waterDepth && (
+                    <View style={styles.errorRow}>
+                      <Ionicons name="alert-circle" size={14} color="#ff3b30" />
+                      <Text style={styles.errorText}>{errors.waterDepth}</Text>
                     </View>
                   )}
                 </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>
+                    People Affected <Text style={styles.requiredMark}>*</Text>
+                  </Text>
+                  <View style={styles.cueChipRow}>
+                    {PEOPLE_OPTIONS.map((opt) => {
+                      const sel = peopleAffected === opt.id;
+                      return (
+                        <Pressable
+                          key={opt.id}
+                          style={({ pressed }) => [
+                            styles.cueChip,
+                            sel && styles.cueChipSelected,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                          onPress={() => {
+                            setPeopleAffected(opt.id);
+                            setErrors((prev) => ({ ...prev, peopleAffected: undefined }));
+                          }}>
+                          <Text style={[styles.cueChipText, sel && styles.cueChipTextSelected]}>
+                            {opt.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {errors.peopleAffected && (
+                    <View style={styles.errorRow}>
+                      <Ionicons name="alert-circle" size={14} color="#ff3b30" />
+                      <Text style={styles.errorText}>{errors.peopleAffected}</Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>
+                    Road Blocked <Text style={styles.requiredMark}>*</Text>
+                  </Text>
+                  <View style={styles.cueChipRow}>
+                    {ROAD_OPTIONS.map((opt) => {
+                      const sel = roadBlocked === opt.id;
+                      return (
+                        <Pressable
+                          key={opt.id}
+                          style={({ pressed }) => [
+                            styles.cueChip,
+                            sel && styles.cueChipSelected,
+                            pressed && { opacity: 0.6 },
+                          ]}
+                          onPress={() => {
+                            setRoadBlocked(opt.id);
+                            setErrors((prev) => ({ ...prev, roadBlocked: undefined }));
+                          }}>
+                          <Text style={[styles.cueChipText, sel && styles.cueChipTextSelected]}>
+                            {opt.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {errors.roadBlocked && (
+                    <View style={styles.errorRow}>
+                      <Ionicons name="alert-circle" size={14} color="#ff3b30" />
+                      <Text style={styles.errorText}>{errors.roadBlocked}</Text>
+                    </View>
+                  )}
+                </View>
+
+                {waterDepth && peopleAffected && roadBlocked && (() => {
+                  const sev = getSeverity({ waterDepth, peopleAffected, roadBlocked });
+                  const meta = SEVERITY_META[sev];
+                  return (
+                    <View style={[styles.severityBadge, { backgroundColor: meta.bg }]}>
+                      <View style={[styles.severityDot, { backgroundColor: meta.color }]} />
+                      <Text style={[styles.severityBadgeText, { color: meta.color }]}>
+                        Severity: {meta.label}
+                      </Text>
+                    </View>
+                  );
+                })()}
 
                 {/* 3. Address Section */}
                 <View style={styles.addressSectionBox}>
@@ -912,47 +988,12 @@ export default function ReportModal({
                   )}
                 </View>
 
-                {/* 6. Status of the Problem */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Status of the Problem</Text>
-                  <View style={styles.statusGrid}>
-                    {PROBLEM_STATUSES.map((item) => {
-                      const isSelected = status === item.id;
-                      return (
-                        <TouchableOpacity
-                          key={item.id}
-                          activeOpacity={0.75}
-                          style={[
-                            styles.statusCard,
-                            isSelected
-                              ? {
-                                  borderColor: item.color,
-                                  backgroundColor: item.bgColor,
-                                }
-                              : null,
-                          ]}
-                          onPress={() => setStatus(item.id)}>
-                          <View
-                            style={[
-                              styles.statusIconWrap,
-                              { backgroundColor: item.color },
-                            ]}>
-                            <Ionicons name={item.icon} size={15} color="#ffffff" />
-                          </View>
-                          <Text
-                            style={[
-                              styles.statusCardLabel,
-                              isSelected
-                                ? { color: item.color, fontWeight: '700' }
-                                : null,
-                            ]}>
-                            {item.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                {submitError && (
+                  <View style={styles.radiusErrorBanner}>
+                    <Ionicons name="alert-circle" size={16} color="#ff3b30" />
+                    <Text style={styles.radiusErrorBannerText}>{submitError}</Text>
                   </View>
-                </View>
+                )}
 
                 {/* Submit button */}
                 <TouchableOpacity
@@ -973,7 +1014,9 @@ export default function ReportModal({
                   ) : (
                     <>
                       <Ionicons name="paper-plane" size={19} color="#ffffff" />
-                      <Text style={styles.primaryButtonText}>Submit Report</Text>
+                      <Text style={styles.primaryButtonText}>
+                        {submitError ? 'Try again' : 'Submit Report'}
+                      </Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -1432,32 +1475,53 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
 
-  /* Status Grid */
-  statusGrid: {
+  cueChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
+    marginTop: 2,
   },
-  statusCard: {
+  cueChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: '#f9f9fb',
-    borderRadius: 10,
-    borderWidth: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 13,
+    borderRadius: 20,
+    borderWidth: 1.5,
     borderColor: '#e5e5ea',
-    gap: 10,
+    backgroundColor: '#f9f9fb',
   },
-  statusIconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    justifyContent: 'center',
-    alignItems: 'center',
+  cueChipSelected: {
+    backgroundColor: '#007aff',
+    borderColor: '#007aff',
   },
-  statusCardLabel: {
+  cueChipText: {
     fontSize: 13,
-    color: '#3a3a3c',
     fontWeight: '500',
+    color: '#3a3a3c',
+  },
+  cueChipTextSelected: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  severityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    gap: 8,
+    marginBottom: 16,
+    alignSelf: 'flex-start',
+  },
+  severityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  severityBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 
   /* Buttons */
