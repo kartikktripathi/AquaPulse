@@ -6,6 +6,9 @@
     "orientation": "portrait",
     "scheme": "aquapulse",
     "userInterfaceStyle": "automatic",
+    "web": {
+      "output": "server"
+    },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {

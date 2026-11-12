@@ -1,17 +1,17 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { Pool } from 'pg';
-
-let prisma;
+import pg from 'pg';
 
 function createPrismaClient() {
   const connectionString =
     process.env.DATABASE_URL ||
     'postgres://postgres:himanshu@localhost:5432/aquapulse';
-  const pool = new Pool({ connectionString });
+  const pool = new pg.Pool({ connectionString });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
 }
+
+let prisma;
 
 if (process.env.NODE_ENV === 'production') {
   prisma = createPrismaClient();
@@ -23,3 +23,4 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 export default prisma;
+

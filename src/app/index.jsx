@@ -884,14 +884,6 @@ export default function Index() {
             {/* Sidebar Content */}
             <View style={styles.sidebarContent}>
               <View>
-                {/* Status indicator */}
-                <View style={styles.sidebarStatusPill}>
-                  <View style={styles.sidebarStatusDot} />
-                  <Text style={styles.sidebarStatusText}>
-                    AquaPulse Network Active
-                  </Text>
-                </View>
-
                 {/* Section Title */}
                 <Text style={styles.sidebarSectionTitle}>Menu</Text>
 
