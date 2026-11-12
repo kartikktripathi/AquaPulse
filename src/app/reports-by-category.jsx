@@ -16,6 +16,7 @@ import {
   FlatList,
   Image,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -24,6 +25,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SEVERITY_META } from '../utils/severity';
 
 import { getReportsFromDatabase } from '../services/reportService';
 import {
@@ -40,6 +42,28 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BASE_CHIPS = FILTER_CATEGORIES; // includes 'all' as first entry
+
+const SEVERITY_CHIPS = [
+  { id: 'all', label: 'All' },
+  { id: 'low', label: 'Low' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'high', label: 'High' },
+];
+
+const STATUS_CHIPS = [
+  { id: 'all', label: 'All' },
+  { id: 'reported', label: getStatusMeta('reported').label },
+  { id: 'review', label: getStatusMeta('review').label },
+  { id: 'in_progress', label: getStatusMeta('in_progress').label },
+  { id: 'fixed', label: getStatusMeta('fixed').label },
+];
+
+const DATE_CHIPS = [
+  { id: 'all', label: 'All time' },
+  { id: 'today', label: 'Today' },
+  { id: '7days', label: '7 days' },
+  { id: '30days', label: '30 days' },
+];
 
 // ─── Standalone ReportCard Component ──────────────────────────────────────────
 
@@ -72,11 +96,21 @@ function ReportCard({ report }) {
               {catMeta.label}
             </Text>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusMeta.bg }]}>
-            <View style={[styles.statusDot, { backgroundColor: statusMeta.color }]} />
-            <Text style={[styles.statusText, { color: statusMeta.color }]}>
-              {statusMeta.label}
-            </Text>
+          <View style={styles.cardBadgesRight}>
+            {report.severity && SEVERITY_META[report.severity] && (
+              <View style={[styles.statusBadge, { backgroundColor: SEVERITY_META[report.severity].bg }]}>
+                <View style={[styles.statusDot, { backgroundColor: SEVERITY_META[report.severity].color }]} />
+                <Text style={[styles.statusText, { color: SEVERITY_META[report.severity].color }]}>
+                  {SEVERITY_META[report.severity].label}
+                </Text>
+              </View>
+            )}
+            <View style={[styles.statusBadge, { backgroundColor: statusMeta.bg }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusMeta.color }]} />
+              <Text style={[styles.statusText, { color: statusMeta.color }]}>
+                {statusMeta.label}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -127,6 +161,10 @@ export default function ReportsByCategory() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError]           = useState(null);
   const [selectedChip, setSelectedChip] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedSeverity, setSelectedSeverity] = useState('all');
+  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedDate, setSelectedDate] = useState('all');
 
   const chipScrollRef = useRef(null);
   const chipOffsets   = useRef({});
@@ -179,10 +217,32 @@ export default function ReportsByCategory() {
 
   // ── Filtered list ──────────────────────────────────────────────────────────
 
-  const filteredReports = useMemo(
-    () => reports.filter((r) => reportMatchesCategory(r, selectedChip)),
-    [reports, selectedChip]
-  );
+  const filteredReports = useMemo(() => {
+    const now = Date.now();
+    return reports.filter((r) => {
+      if (!reportMatchesCategory(r, selectedChip)) return false;
+      if (selectedSeverity !== 'all') {
+        if (r.severity !== selectedSeverity) return false;
+      }
+      if (selectedStatus !== 'all') {
+        if (r.status !== selectedStatus) return false;
+      }
+      if (selectedDate !== 'all') {
+        if (!r.createdAt) return false;
+        const createdMs = new Date(r.createdAt).getTime();
+        if (isNaN(createdMs)) return false;
+        const diffMs = now - createdMs;
+        if (selectedDate === 'today') {
+          if (diffMs > 86400000) return false;
+        } else if (selectedDate === '7days') {
+          if (diffMs > 7 * 86400000) return false;
+        } else if (selectedDate === '30days') {
+          if (diffMs > 30 * 86400000) return false;
+        }
+      }
+      return true;
+    });
+  }, [reports, selectedChip, selectedSeverity, selectedStatus, selectedDate]);
 
   // ── Chip selection ─────────────────────────────────────────────────────────
 
@@ -361,6 +421,82 @@ export default function ReportsByCategory() {
       {renderHeader()}
       {renderChipRow()}
 
+      {showFilters && (
+        <View style={styles.filtersSection}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterChipRowContent}
+            style={styles.filterChipRow}>
+            {SEVERITY_CHIPS.map((chip) => {
+              const isSelected = selectedSeverity === chip.id;
+              return (
+                <Pressable
+                  key={chip.id}
+                  onPress={() => setSelectedSeverity(chip.id)}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    isSelected && styles.filterChipSelected,
+                    pressed && { opacity: 0.6 },
+                  ]}>
+                  <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+                    {chip.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterChipRowContent}
+            style={styles.filterChipRow}>
+            {STATUS_CHIPS.map((chip) => {
+              const isSelected = selectedStatus === chip.id;
+              return (
+                <Pressable
+                  key={chip.id}
+                  onPress={() => setSelectedStatus(chip.id)}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    isSelected && styles.filterChipSelected,
+                    pressed && { opacity: 0.6 },
+                  ]}>
+                  <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+                    {chip.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterChipRowContent}
+            style={styles.filterChipRow}>
+            {DATE_CHIPS.map((chip) => {
+              const isSelected = selectedDate === chip.id;
+              return (
+                <Pressable
+                  key={chip.id}
+                  onPress={() => setSelectedDate(chip.id)}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    isSelected && styles.filterChipSelected,
+                    pressed && { opacity: 0.6 },
+                  ]}>
+                  <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+                    {chip.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Summary pill */}
       {reports.length > 0 && (
         <View style={styles.summaryRow}>
@@ -372,6 +508,26 @@ export default function ReportsByCategory() {
               : `${filteredReports.length} reports`}
             {selectedChip !== 'all' ? `  ·  ${selectedCategoryMeta?.label}` : ''}
           </Text>
+          <Pressable
+            onPress={() => setShowFilters((prev) => !prev)}
+            style={({ pressed }) => [
+              styles.filterToggleBtn,
+              showFilters && styles.filterToggleBtnActive,
+              pressed && { opacity: 0.6 },
+            ]}>
+            <Ionicons
+              name="options-outline"
+              size={13}
+              color={showFilters ? '#ffffff' : '#007AFF'}
+            />
+            <Text
+              style={[
+                styles.filterToggleText,
+                showFilters && styles.filterToggleTextActive,
+              ]}>
+              Filters
+            </Text>
+          </Pressable>
         </View>
       )}
 
@@ -488,6 +644,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   summaryText: {
     fontSize: 12,
@@ -495,6 +654,49 @@ const styles = StyleSheet.create({
     color: '#8e8e93',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  filterToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+    backgroundColor: '#ffffff',
+  },
+  filterToggleBtnActive: {
+    backgroundColor: '#007AFF',
+  },
+  filterToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  filterToggleTextActive: {
+    color: '#ffffff',
+  },
+  filtersSection: {
+    backgroundColor: '#ffffff',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e5ea',
+    paddingVertical: 6,
+    gap: 6,
+  },
+  filterChipRow: {
+    maxHeight: 44,
+  },
+  filterChipRowContent: {
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  filterChipSelected: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
   },
 
   // List
@@ -546,6 +748,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     flexShrink: 1,
+  },
+  cardBadgesRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
   },
   statusBadge: {
     flexDirection: 'row',
