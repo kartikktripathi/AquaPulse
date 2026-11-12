@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
+import { router, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -322,15 +322,6 @@ const SIDEBAR_ITEMS = [
     route: '/reports-by-category',
   },
   {
-    id: 'nearby_reports',
-    title: 'Nearby Reports',
-    subtitle: 'Find water issues around you',
-    icon: 'navigate-circle-outline',
-    iconColor: '#14b8a6',
-    bgColor: '#eefbf7',
-    route: '/nearby-reports',
-  },
-  {
     id: 'alerts',
     title: 'Water Outages & Alerts',
     subtitle: 'City supply schedules and alerts',
@@ -389,7 +380,6 @@ export default function Index() {
   // Sidebar state & animations
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const isOpeningRef = useRef(false);
-  const pendingRouteRef = useRef(null);
 
   const slideAnim = useRef(new Animated.Value(-sidebarWidth)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -419,14 +409,6 @@ export default function Index() {
       setIsSidebarOpen(false);
     }, 250);
   };
-
-  useEffect(() => {
-    if (!isSidebarOpen && pendingRouteRef.current) {
-      const route = pendingRouteRef.current;
-      pendingRouteRef.current = null;
-      router.push(route);
-    }
-  }, [isSidebarOpen, router]);
 
   useEffect(() => {
     if (isSidebarOpen) {
@@ -928,8 +910,18 @@ export default function Index() {
                         ]}
                         activeOpacity={0.6}
                         onPress={() => {
-                          pendingRouteRef.current = item.route;
                           closeSidebar();
+                          if (item.route) {
+                            try {
+                              router.push(item.route);
+                            } catch (_) {
+                              try {
+                                router.navigate(item.route);
+                              } catch (err) {
+                                console.warn('Navigation error:', err);
+                              }
+                            }
+                          }
                         }}
                         accessibilityRole="button"
                         accessibilityLabel={item.title}>
