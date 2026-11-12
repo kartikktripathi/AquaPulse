@@ -901,8 +901,9 @@ export default function Index() {
                 <View style={styles.sidebarMenu}>
                   {SIDEBAR_ITEMS.map((item, index) => {
                     const isLast = index === SIDEBAR_ITEMS.length - 1;
-                    const menuItem = (
+                    return (
                       <TouchableOpacity
+                        key={item.id}
                         style={[
                           styles.sidebarMenuItem,
                           !isLast ? styles.sidebarMenuItemBorder : null,
@@ -949,20 +950,6 @@ export default function Index() {
                           color="#c7c7cc"
                         />
                       </TouchableOpacity>
-                    );
-
-                    if (item.route) {
-                      return (
-                        <Link key={item.id} href={item.route} asChild>
-                          {menuItem}
-                        </Link>
-                      );
-                    }
-
-                    return (
-                      <View key={item.id}>
-                        {menuItem}
-                      </View>
                     );
                   })}
                 </View>
