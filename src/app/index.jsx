@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { router } from 'expo-router';
+import { Link, router, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -351,6 +351,7 @@ const SIDEBAR_ITEMS = [
 ];
 
 export default function Index() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const sidebarWidth = Math.min(windowWidth * 0.78, 320);
@@ -388,7 +389,7 @@ export default function Index() {
   };
 
   const closeSidebar = () => {
-    if (isOpeningRef.current) return;
+    isOpeningRef.current = false;
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: -sidebarWidth,
@@ -403,6 +404,10 @@ export default function Index() {
     ]).start(() => {
       setIsSidebarOpen(false);
     });
+    // Fallback ensure modal state clears even if animation callback is delayed/cancelled
+    setTimeout(() => {
+      setIsSidebarOpen(false);
+    }, 250);
   };
 
   useEffect(() => {
@@ -896,34 +901,25 @@ export default function Index() {
                 <View style={styles.sidebarMenu}>
                   {SIDEBAR_ITEMS.map((item, index) => {
                     const isLast = index === SIDEBAR_ITEMS.length - 1;
-                    return (
+                    const menuItem = (
                       <TouchableOpacity
-                        key={item.id}
                         style={[
                           styles.sidebarMenuItem,
                           !isLast ? styles.sidebarMenuItemBorder : null,
                         ]}
                         activeOpacity={0.6}
                         onPress={() => {
+                          closeSidebar();
                           if (item.route) {
-                            // Animate the sidebar closed first, then navigate
-                            Animated.parallel([
-                              Animated.timing(slideAnim, {
-                                toValue: -sidebarWidth,
-                                duration: 220,
-                                useNativeDriver: Platform.OS !== 'web',
-                              }),
-                              Animated.timing(fadeAnim, {
-                                toValue: 0,
-                                duration: 220,
-                                useNativeDriver: Platform.OS !== 'web',
-                              }),
-                            ]).start(() => {
-                              setIsSidebarOpen(false);
+                            try {
                               router.push(item.route);
-                            });
-                          } else {
-                            closeSidebar();
+                            } catch (_) {
+                              try {
+                                router.navigate(item.route);
+                              } catch (err) {
+                                console.warn('Navigation error:', err);
+                              }
+                            }
                           }
                         }}
                         accessibilityRole="button"
@@ -953,6 +949,20 @@ export default function Index() {
                           color="#c7c7cc"
                         />
                       </TouchableOpacity>
+                    );
+
+                    if (item.route) {
+                      return (
+                        <Link key={item.id} href={item.route} asChild>
+                          {menuItem}
+                        </Link>
+                      );
+                    }
+
+                    return (
+                      <View key={item.id}>
+                        {menuItem}
+                      </View>
                     );
                   })}
                 </View>

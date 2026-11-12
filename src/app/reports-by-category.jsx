@@ -9,8 +9,8 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -41,9 +41,85 @@ import {
 
 const BASE_CHIPS = FILTER_CATEGORIES; // includes 'all' as first entry
 
+// ─── Standalone ReportCard Component ──────────────────────────────────────────
+
+function ReportCard({ report }) {
+  let name, addressLine, dateStr, description, firstPhoto, catMeta, statusMeta;
+  try {
+    name        = (typeof report.name === 'string' && report.name.trim()) || 'Untitled water issue';
+    addressLine = getAddressLine(report) || 'Location details unavailable';
+    dateStr     = formatReportDate(report.createdAt) || 'Date unavailable';
+    description = typeof report.description === 'string' ? report.description.trim() : '';
+    const photos = parsePhotos(report.photos);
+    firstPhoto  = photos.length > 0 ? photos[0] : null;
+    catMeta     = getCategoryMeta(report);
+    statusMeta  = getStatusMeta(report.status);
+  } catch (_) {
+    return null; // Skip genuinely broken cards without crashing the list
+  }
+
+  return (
+    <View style={styles.card}>
+      {/* Left colour accent */}
+      <View style={[styles.cardAccent, { backgroundColor: catMeta.color }]} />
+
+      <View style={styles.cardBody}>
+        {/* Category badge + Status badge */}
+        <View style={styles.cardTopRow}>
+          <View style={[styles.categoryBadge, { backgroundColor: catMeta.color + '18' }]}>
+            <Ionicons name={catMeta.icon} size={13} color={catMeta.color} />
+            <Text style={[styles.categoryBadgeText, { color: catMeta.color }]} numberOfLines={1}>
+              {catMeta.label}
+            </Text>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: statusMeta.bg }]}>
+            <View style={[styles.statusDot, { backgroundColor: statusMeta.color }]} />
+            <Text style={[styles.statusText, { color: statusMeta.color }]}>
+              {statusMeta.label}
+            </Text>
+          </View>
+        </View>
+
+        {/* Report name */}
+        <Text style={styles.cardTitle} numberOfLines={2}>{name}</Text>
+
+        {/* Address */}
+        <View style={styles.cardMeta}>
+          <Ionicons name="location-outline" size={12} color="#8e8e93" />
+          <Text style={styles.cardMetaText} numberOfLines={1}>{addressLine}</Text>
+        </View>
+
+        {/* Date */}
+        <View style={styles.cardMeta}>
+          <Ionicons name="time-outline" size={12} color="#8e8e93" />
+          <Text style={styles.cardMetaText}>{dateStr}</Text>
+        </View>
+
+        {/* Description preview + optional thumbnail */}
+        {(description.length > 0 || firstPhoto) && (
+          <View style={styles.cardPreviewRow}>
+            {description.length > 0 && (
+              <Text style={styles.cardDescription} numberOfLines={2}>{description}</Text>
+            )}
+            {firstPhoto && (
+              <Image
+                source={{ uri: firstPhoto }}
+                style={styles.cardThumb}
+                accessibilityLabel="Report photo"
+                onError={() => { /* silently ignore broken images */ }}
+              />
+            )}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
 // ─── Main screen component ────────────────────────────────────────────────────
 
 export default function ReportsByCategory() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [reports, setReports]       = useState([]);
@@ -123,7 +199,7 @@ export default function ReportsByCategory() {
   const handleBack = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace('/');
-  }, []);
+  }, [router]);
 
   // ── Derived display helpers ────────────────────────────────────────────────
 
@@ -132,169 +208,90 @@ export default function ReportsByCategory() {
     [selectedChip, visibleChips]
   );
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Sub-components (defined inside to access closure state cleanly)
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── Render Helpers ─────────────────────────────────────────────────────────
 
-  function Header() {
-    return (
-      <View
-        style={[styles.header, { paddingTop: insets.top + (Platform.OS === 'web' ? 16 : 10) }]}
-        accessibilityRole="header">
-        <TouchableOpacity
-          onPress={handleBack}
-          activeOpacity={0.6}
-          style={styles.backButton}
-          accessibilityLabel="Go back to map"
-          accessibilityRole="button"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="chevron-back" size={24} color="#1c1c1e" />
-        </TouchableOpacity>
-        <View style={styles.headerTitleWrap}>
-          <Text style={styles.headerTitle} numberOfLines={1}>Reports by Category</Text>
-          <Text style={styles.headerSubtitle} numberOfLines={1}>Explore water issues by type</Text>
-        </View>
+  const renderHeader = () => (
+    <View
+      style={[styles.header, { paddingTop: insets.top + (Platform.OS === 'web' ? 16 : 10) }]}
+      accessibilityRole="header">
+      <TouchableOpacity
+        onPress={handleBack}
+        activeOpacity={0.6}
+        style={styles.backButton}
+        accessibilityLabel="Go back to map"
+        accessibilityRole="button"
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <Ionicons name="chevron-back" size={24} color="#1c1c1e" />
+      </TouchableOpacity>
+      <View style={styles.headerTitleWrap}>
+        <Text style={styles.headerTitle} numberOfLines={1}>Reports by Category</Text>
+        <Text style={styles.headerSubtitle} numberOfLines={1}>Explore water issues by type</Text>
       </View>
-    );
-  }
+    </View>
+  );
 
-  function ChipRow() {
-    return (
-      <ScrollView
-        ref={chipScrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipRowContent}
-        style={styles.chipRow}
-        accessibilityRole="tablist">
-        {visibleChips.map((chip) => {
-          const isSelected = selectedChip === chip.id;
-          const count = categoryCounts[chip.id] ?? 0;
-          return (
-            <TouchableOpacity
-              key={chip.id}
-              onLayout={(e) => { chipOffsets.current[chip.id] = e.nativeEvent.layout.x; }}
-              onPress={() => handleChipPress(chip.id)}
-              activeOpacity={0.7}
-              style={[
-                styles.chip,
-                isSelected && { backgroundColor: chip.color, borderColor: chip.color },
-              ]}
-              accessibilityRole="tab"
-              accessibilityLabel={`${chip.label}, ${count} reports`}
-              accessibilityState={{ selected: isSelected }}>
-              <Ionicons
-                name={chip.icon}
-                size={14}
-                color={isSelected ? '#ffffff' : chip.color}
-                style={styles.chipIcon}
-              />
-              <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
-                {chip.label}{' · '}{count}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    );
-  }
+  const renderChipRow = () => (
+    <ScrollView
+      ref={chipScrollRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.chipRowContent}
+      style={styles.chipRow}
+      accessibilityRole="tablist">
+      {visibleChips.map((chip) => {
+        const isSelected = selectedChip === chip.id;
+        const count = categoryCounts[chip.id] ?? 0;
+        return (
+          <TouchableOpacity
+            key={chip.id}
+            onLayout={(e) => { chipOffsets.current[chip.id] = e.nativeEvent.layout.x; }}
+            onPress={() => handleChipPress(chip.id)}
+            activeOpacity={0.7}
+            style={[
+              styles.chip,
+              isSelected && { backgroundColor: chip.color, borderColor: chip.color },
+            ]}
+            accessibilityRole="tab"
+            accessibilityLabel={`${chip.label}, ${count} reports`}
+            accessibilityState={{ selected: isSelected }}>
+            <Ionicons
+              name={chip.icon}
+              size={14}
+              color={isSelected ? '#ffffff' : chip.color}
+              style={styles.chipIcon}
+            />
+            <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+              {chip.label}{' · '}{count}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
 
-  function ReportCard({ report }) {
-    let name, addressLine, dateStr, description, firstPhoto, catMeta, statusMeta;
-    try {
-      name        = (typeof report.name === 'string' && report.name.trim()) || 'Untitled water issue';
-      addressLine = getAddressLine(report) || 'Location details unavailable';
-      dateStr     = formatReportDate(report.createdAt) || 'Date unavailable';
-      description = typeof report.description === 'string' ? report.description.trim() : '';
-      const photos = parsePhotos(report.photos);
-      firstPhoto  = photos.length > 0 ? photos[0] : null;
-      catMeta     = getCategoryMeta(report);
-      statusMeta  = getStatusMeta(report.status);
-    } catch (_) {
-      return null; // Skip genuinely broken cards without crashing the list
+  const renderEmpty = () => {
+    if (reports.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="water-outline" size={64} color="#c7c7cc" />
+          <Text style={styles.emptyTitle}>No reports yet</Text>
+          <Text style={styles.emptyBody}>
+            Be the first to report a water issue in your area. Your report helps
+            the community and municipal authorities track problems faster.
+          </Text>
+          <TouchableOpacity
+            onPress={handleBack}
+            activeOpacity={0.7}
+            style={styles.emptyButton}
+            accessibilityRole="button"
+            accessibilityLabel="Go back to map to submit a report">
+            <Ionicons name="add-circle-outline" size={18} color="#ffffff" />
+            <Text style={styles.emptyButtonText}>Submit a Report</Text>
+          </TouchableOpacity>
+        </View>
+      );
     }
 
-    return (
-      <View style={styles.card}>
-        {/* Left colour accent */}
-        <View style={[styles.cardAccent, { backgroundColor: catMeta.color }]} />
-
-        <View style={styles.cardBody}>
-          {/* Category badge + Status badge */}
-          <View style={styles.cardTopRow}>
-            <View style={[styles.categoryBadge, { backgroundColor: catMeta.color + '18' }]}>
-              <Ionicons name={catMeta.icon} size={13} color={catMeta.color} />
-              <Text style={[styles.categoryBadgeText, { color: catMeta.color }]} numberOfLines={1}>
-                {catMeta.label}
-              </Text>
-            </View>
-            <View style={[styles.statusBadge, { backgroundColor: statusMeta.bg }]}>
-              <View style={[styles.statusDot, { backgroundColor: statusMeta.color }]} />
-              <Text style={[styles.statusText, { color: statusMeta.color }]}>
-                {statusMeta.label}
-              </Text>
-            </View>
-          </View>
-
-          {/* Report name */}
-          <Text style={styles.cardTitle} numberOfLines={2}>{name}</Text>
-
-          {/* Address */}
-          <View style={styles.cardMeta}>
-            <Ionicons name="location-outline" size={12} color="#8e8e93" />
-            <Text style={styles.cardMetaText} numberOfLines={1}>{addressLine}</Text>
-          </View>
-
-          {/* Date */}
-          <View style={styles.cardMeta}>
-            <Ionicons name="time-outline" size={12} color="#8e8e93" />
-            <Text style={styles.cardMetaText}>{dateStr}</Text>
-          </View>
-
-          {/* Description preview + optional thumbnail */}
-          {(description.length > 0 || firstPhoto) && (
-            <View style={styles.cardPreviewRow}>
-              {description.length > 0 && (
-                <Text style={styles.cardDescription} numberOfLines={2}>{description}</Text>
-              )}
-              {firstPhoto && (
-                <Image
-                  source={{ uri: firstPhoto }}
-                  style={styles.cardThumb}
-                  accessibilityLabel="Report photo"
-                  onError={() => { /* silently ignore broken images */ }}
-                />
-              )}
-            </View>
-          )}
-        </View>
-      </View>
-    );
-  }
-
-  function EmptyAllReports() {
-    return (
-      <View style={styles.emptyContainer}>
-        <Ionicons name="water-outline" size={64} color="#c7c7cc" />
-        <Text style={styles.emptyTitle}>No reports yet</Text>
-        <Text style={styles.emptyBody}>
-          Be the first to report a water issue in your area. Your report helps
-          the community and municipal authorities track problems faster.
-        </Text>
-        <TouchableOpacity
-          onPress={handleBack}
-          activeOpacity={0.7}
-          style={styles.emptyButton}
-          accessibilityRole="button"
-          accessibilityLabel="Go back to map to submit a report">
-          <Ionicons name="add-circle-outline" size={18} color="#ffffff" />
-          <Text style={styles.emptyButtonText}>Submit a Report</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  function EmptyCategory() {
     return (
       <View style={styles.emptyContainer}>
         <Ionicons name="filter-outline" size={56} color="#c7c7cc" />
@@ -316,33 +313,14 @@ export default function ReportsByCategory() {
         </TouchableOpacity>
       </View>
     );
-  }
-
-  function ErrorState() {
-    return (
-      <View style={styles.emptyContainer}>
-        <Ionicons name="cloud-offline-outline" size={60} color="#c7c7cc" />
-        <Text style={styles.emptyTitle}>Could not load reports</Text>
-        <Text style={styles.emptyBody}>{error}</Text>
-        <TouchableOpacity
-          onPress={() => fetchReports(false)}
-          activeOpacity={0.7}
-          style={styles.emptyButton}
-          accessibilityRole="button"
-          accessibilityLabel="Retry loading reports">
-          <Ionicons name="refresh-outline" size={18} color="#ffffff" />
-          <Text style={styles.emptyButtonText}>Try Again</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  };
 
   // ── Loading state ──────────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <View style={styles.root}>
-        <Header />
+        {renderHeader()}
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
           <Text style={styles.loadingText}>Loading reports…</Text>
@@ -351,26 +329,37 @@ export default function ReportsByCategory() {
     );
   }
 
-  // ── Error state (and no cached reports to show) ────────────────────────────
+  // ── Error state ────────────────────────────────────────────────────────────
 
   if (error && reports.length === 0) {
     return (
       <View style={styles.root}>
-        <Header />
-        <ChipRow />
-        <ErrorState />
+        {renderHeader()}
+        {renderChipRow()}
+        <View style={styles.emptyContainer}>
+          <Ionicons name="cloud-offline-outline" size={60} color="#c7c7cc" />
+          <Text style={styles.emptyTitle}>Could not load reports</Text>
+          <Text style={styles.emptyBody}>{error}</Text>
+          <TouchableOpacity
+            onPress={() => fetchReports(false)}
+            activeOpacity={0.7}
+            style={styles.emptyButton}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading reports">
+            <Ionicons name="refresh-outline" size={18} color="#ffffff" />
+            <Text style={styles.emptyButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
   // ── Normal render ──────────────────────────────────────────────────────────
 
-  const listEmpty = reports.length === 0 ? <EmptyAllReports /> : <EmptyCategory />;
-
   return (
     <View style={styles.root}>
-      <Header />
-      <ChipRow />
+      {renderHeader()}
+      {renderChipRow()}
 
       {/* Summary pill */}
       {reports.length > 0 && (
@@ -393,7 +382,7 @@ export default function ReportsByCategory() {
         }
         renderItem={({ item }) => <ReportCard report={item} />}
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 24 }]}
-        ListEmptyComponent={listEmpty}
+        ListEmptyComponent={renderEmpty}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
