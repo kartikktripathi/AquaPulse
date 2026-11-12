@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -313,13 +312,12 @@ const mapHtml = `<!DOCTYPE html>
 
 const SIDEBAR_ITEMS = [
   {
-    id: 'reports_by_category',
-    title: 'Reports by Category',
-    subtitle: 'Browse water issues by type',
-    icon: 'grid-outline',
+    id: 'reports',
+    title: 'View Reports List',
+    subtitle: 'Track submitted water problem reports',
+    icon: 'document-text-outline',
     iconColor: '#007aff',
     bgColor: '#eff6ff',
-    route: '/reports-by-category',
   },
   {
     id: 'alerts',
@@ -328,7 +326,6 @@ const SIDEBAR_ITEMS = [
     icon: 'warning-outline',
     iconColor: '#ff9500',
     bgColor: '#fff8ed',
-    route: null,
   },
   {
     id: 'helpline',
@@ -337,7 +334,6 @@ const SIDEBAR_ITEMS = [
     icon: 'call-outline',
     iconColor: '#34c759',
     bgColor: '#eefbf2',
-    route: null,
   },
   {
     id: 'about',
@@ -346,7 +342,6 @@ const SIDEBAR_ITEMS = [
     icon: 'information-circle-outline',
     iconColor: '#5856d6',
     bgColor: '#f5f3ff',
-    route: null,
   },
 ];
 
@@ -894,7 +889,7 @@ export default function Index() {
 
                 {/* Navigation List */}
                 <View style={styles.sidebarMenu}>
-                 {SIDEBAR_ITEMS.map((item, index) => {
+                  {SIDEBAR_ITEMS.map((item, index) => {
                     const isLast = index === SIDEBAR_ITEMS.length - 1;
                     return (
                       <TouchableOpacity
@@ -904,28 +899,7 @@ export default function Index() {
                           !isLast ? styles.sidebarMenuItemBorder : null,
                         ]}
                         activeOpacity={0.6}
-                        onPress={() => {
-                          if (item.route) {
-                            // Close sidebar first, navigate after animation completes
-                            Animated.parallel([
-                              Animated.timing(slideAnim, {
-                                toValue: -sidebarWidth,
-                                duration: 220,
-                                useNativeDriver: Platform.OS !== 'web',
-                              }),
-                              Animated.timing(fadeAnim, {
-                                toValue: 0,
-                                duration: 220,
-                                useNativeDriver: Platform.OS !== 'web',
-                              }),
-                            ]).start(() => {
-                              setIsSidebarOpen(false);
-                              router.push(item.route);
-                            });
-                          } else {
-                            closeSidebar();
-                          }
-                        }}
+                        onPress={closeSidebar}
                         accessibilityRole="button"
                         accessibilityLabel={item.title}>
                         <View
