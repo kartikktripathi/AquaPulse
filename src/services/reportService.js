@@ -30,9 +30,6 @@ function getApiCandidates() {
   return Array.from(new Set(candidates));
 }
 
-/**
- * In-memory fallback cache for reports.
- */
 let localReportsCache = [];
 
 /**
@@ -63,7 +60,6 @@ export async function saveReportToDatabase(reportData) {
       if (response.ok && contentType.includes('application/json')) {
         const data = await response.json();
         if (data && data.success && data.report) {
-          localReportsCache.unshift(data.report);
           console.log(
             'Report successfully saved to PostgreSQL database via',
             endpoint
@@ -76,20 +72,13 @@ export async function saveReportToDatabase(reportData) {
     }
   }
 
-  console.warn(
-    'Could not connect to PostgreSQL database server, saved to local cache:',
-    lastError?.message
-  );
-
-  const fallbackReport = {
-    ...reportData,
-    id: reportData.id || `local_${Date.now()}`,
-    createdAt: reportData.createdAt || new Date().toISOString(),
-    status: reportData.status || 'reported',
+  return {
+    success: false,
+    error:
+      !lastError || lastError.message === 'Failed to fetch'
+        ? 'Submission failed due to a network error. Tap Try again.'
+        : lastError.message,
   };
-
-  localReportsCache.unshift(fallbackReport);
-  return { success: true, report: fallbackReport, isLocalFallback: true };
 }
 
 /**
