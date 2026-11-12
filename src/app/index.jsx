@@ -310,6 +310,41 @@ const mapHtml = `<!DOCTYPE html>
   </body>
 </html>`;
 
+const SIDEBAR_ITEMS = [
+  {
+    id: 'reports',
+    title: 'View Reports List',
+    subtitle: 'Track submitted water problem reports',
+    icon: 'document-text-outline',
+    iconColor: '#007aff',
+    bgColor: '#eff6ff',
+  },
+  {
+    id: 'alerts',
+    title: 'Water Outages & Alerts',
+    subtitle: 'City supply schedules and alerts',
+    icon: 'warning-outline',
+    iconColor: '#ff9500',
+    bgColor: '#fff8ed',
+  },
+  {
+    id: 'helpline',
+    title: 'Emergency Helpline',
+    subtitle: 'Contact municipal water control room',
+    icon: 'call-outline',
+    iconColor: '#34c759',
+    bgColor: '#eefbf2',
+  },
+  {
+    id: 'about',
+    title: 'About the Application',
+    subtitle: 'App details, version, and mission',
+    icon: 'information-circle-outline',
+    iconColor: '#5856d6',
+    bgColor: '#f5f3ff',
+  },
+];
+
 export default function Index() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -846,8 +881,52 @@ export default function Index() {
               </TouchableOpacity>
             </View>
 
-            {/* Empty Sidebar Content */}
-            <View style={styles.sidebarContent} />
+            {/* Sidebar Content */}
+            <View style={styles.sidebarContent}>
+              <View style={styles.sidebarMenu}>
+                {SIDEBAR_ITEMS.map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.sidebarMenuItem}
+                    activeOpacity={0.7}
+                    onPress={closeSidebar}
+                    accessibilityRole="button"
+                    accessibilityLabel={item.title}>
+                    <View
+                      style={[
+                        styles.sidebarMenuIconBubble,
+                        { backgroundColor: item.bgColor },
+                      ]}>
+                      <Ionicons
+                        name={item.icon}
+                        size={20}
+                        color={item.iconColor}
+                      />
+                    </View>
+                    <View style={styles.sidebarMenuTextWrap}>
+                      <Text style={styles.sidebarMenuItemTitle}>
+                        {item.title}
+                      </Text>
+                      <Text style={styles.sidebarMenuItemSubtitle}>
+                        {item.subtitle}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={17}
+                      color="#c7c7cc"
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.sidebarFooter}>
+                <Text style={styles.sidebarFooterVersion}>AquaPulse v1.0.0</Text>
+                <Text style={styles.sidebarFooterText}>
+                  Smart City Water Network & Monitoring
+                </Text>
+              </View>
+            </View>
           </Animated.View>
         </View>
       </Modal>
@@ -1131,6 +1210,59 @@ const styles = StyleSheet.create({
   },
   sidebarContent: {
     flex: 1,
-    paddingVertical: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+    justifyContent: 'space-between',
+  },
+  sidebarMenu: {
+    gap: 8,
+  },
+  sidebarMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#f0f0f2',
+  },
+  sidebarMenuIconBubble: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  sidebarMenuTextWrap: {
+    flex: 1,
+  },
+  sidebarMenuItemTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1c1c1e',
+    marginBottom: 2,
+  },
+  sidebarMenuItemSubtitle: {
+    fontSize: 11,
+    color: '#8e8e93',
+  },
+  sidebarFooter: {
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e5ea',
+    alignItems: 'center',
+  },
+  sidebarFooterVersion: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8e8e93',
+    marginBottom: 2,
+  },
+  sidebarFooterText: {
+    fontSize: 11,
+    color: '#aeaeb2',
+    textAlign: 'center',
   },
 });
