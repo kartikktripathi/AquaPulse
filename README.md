@@ -1,5 +1,32 @@
 # Welcome to your Expo app 👋
 
+## Local demo mode (no backend needed)
+
+The app now defaults to local demo mode. Run `npm start`, fill in the report form,
+and submit. Reports and photos persist in browser site storage on web, or app
+document files on Android/iOS. Open Reports by Category or Nearby Reports to see
+them. Nearby Reports still needs location permission and valid report coordinates.
+The success screen explicitly says the report is saved on this device.
+
+Reports are private to this browser/device and are not sent to officials. Clearing
+site/app data removes them. Large photos may exceed browser storage capacity; the
+form keeps your inputs and displays an error if saving fails.
+
+When the backend is ready, set these in `.env` and restart Expo:
+
+```dotenv
+EXPO_PUBLIC_REPORT_MODE=api
+EXPO_PUBLIC_API_URL=http://localhost:5001
+```
+
+On a physical phone, use the server computer's reachable LAN address instead of
+localhost. Switching modes does not upload demo reports automatically; they remain
+separate from backend data. Set mode back to `local` to view them again.
+
+For the Nearby Reports feature, setup, API contract, and verification commands,
+see [Nearby Reports](docs/nearby-reports.md). The implementation prompt is available
+in [docs/nearby-reports-prompt.md](docs/nearby-reports-prompt.md).
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started

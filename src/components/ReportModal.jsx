@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FILTER_CATEGORIES } from '../utils/categoryMeta';
-import { saveReportToDatabase } from '../services/reportService';
+import { isLocalDemoMode, saveReportToDatabase } from '../services/reportService';
 import { calculateDistanceMeters, reverseGeocode } from '../utils/geo';
 import {
   DEPTH_OPTIONS,
@@ -254,6 +254,7 @@ export default function ReportModal({
   };
 
   const handleSubmit = async () => {
+    if (isSubmittingReport) return;
     const newErrors = {};
 
     if (!problemName.trim()) {
@@ -333,17 +334,16 @@ export default function ReportModal({
         setIsSubmittingReport(false);
         return;
       }
+      onSubmit?.(result.report);
     } catch (saveError) {
-      console.warn('Database save warning:', saveError);
-      setSubmitError('Submission failed due to a network error. Tap Try again.');
+      console.warn('Report save warning:', saveError);
+      setSubmitError(isLocalDemoMode
+        ? 'Could not save this report on your device. Check available storage and try again.'
+        : 'Could not reach the report server. Check your connection and try again.');
       setIsSubmittingReport(false);
       return;
     }
     setIsSubmittingReport(false);
-
-    if (onSubmit) {
-      onSubmit(reportData);
-    }
 
     setIsSubmitted(true);
   };
@@ -385,6 +385,12 @@ export default function ReportModal({
               </TouchableOpacity>
             </View>
 
+            {isLocalDemoMode && !isSubmitted && (
+              <Text style={[styles.radiusDescription, { paddingHorizontal: 16, marginBottom: 8, color: '#007aff' }]}>
+                Local demo mode · reports save on this device, no backend needed.
+              </Text>
+            )}
+
             {isSubmitted ? (
               /* Success Screen */
               <ScrollView
@@ -394,10 +400,11 @@ export default function ReportModal({
                 <View style={styles.successIconBubble}>
                   <Ionicons name="checkmark" size={48} color="#34c759" />
                 </View>
-                <Text style={styles.successTitle}>Report Submitted!</Text>
+                <Text style={styles.successTitle}>{isLocalDemoMode ? 'Report Saved on This Device!' : 'Report Submitted!'}</Text>
                 <Text style={styles.successMessage}>
-                  Thank you for reporting this issue. Your submission helps municipal
-                  and local maintenance teams respond rapidly.
+                  {isLocalDemoMode
+                    ? 'Demo mode: your report is saved locally. Find it in Reports by Category or Nearby Reports. It has not been sent to municipal teams.'
+                    : 'Thank you for reporting this issue. Your submission helps municipal and local maintenance teams respond rapidly.'}
                 </Text>
 
                 <View style={styles.summaryCard}>

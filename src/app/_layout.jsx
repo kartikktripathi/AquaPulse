@@ -8,6 +8,7 @@ export default function RootLayout() {
       }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="reports-by-category" options={{ headerShown: false }} />
+      <Stack.Screen name="nearby-reports" options={{ headerShown: false }} />
     </Stack>
   );
 }

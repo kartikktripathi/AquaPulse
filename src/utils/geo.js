@@ -1,8 +1,8 @@
 /**
  * Calculate the great-circle distance between two geographic coordinates
- * using the Haversine formula (returns distance in meters).
+ * using the Haversine formula. Pass round=false for precise radius comparisons.
  */
-export function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
+export function calculateDistanceMeters(lat1, lon1, lat2, lon2, round = true) {
   if (
     lat1 === undefined ||
     lon1 === undefined ||
@@ -25,8 +25,10 @@ export function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
       Math.cos((lat2 * Math.PI) / 180) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(R * c);
+  const clamped = Math.max(0, Math.min(1, a));
+  const c = 2 * Math.atan2(Math.sqrt(clamped), Math.sqrt(1 - clamped));
+  const meters = R * c;
+  return round ? Math.round(meters) : meters;
 }
 
 /**

@@ -52,9 +52,9 @@ function guessFromLabel(label) {
   if (!label || typeof label !== 'string') return null;
   const l = label.toLowerCase();
   if (l.includes('flood') || l.includes('waterlog') || l.includes('street flood')) return 'urban_flooding';
+  if (l.includes('pond') || l.includes('lake')) return 'overflowing_pond';
   if (l.includes('drain') || l.includes('sewage') || l.includes('overflow'))        return 'drain_blockage';
   if (l.includes('contaminat') || l.includes('dirty') || l.includes('pollut') || l.includes('stagnant')) return 'polluted_water';
-  if (l.includes('pond') || l.includes('lake'))                                      return 'overflowing_pond';
   if (l.includes('pipe') || l.includes('burst') || l.includes('leak'))               return 'pipe_leakage';
   return null;
 }
@@ -67,8 +67,8 @@ function guessFromLabel(label) {
  */
 export function getUiCategoryId(report) {
   if (!report || typeof report !== 'object') return 'other';
-  const rawId = (report.categoryId || '').trim().toLowerCase();
-  if (rawId && LEGACY_ID_MAP[rawId] !== undefined) return LEGACY_ID_MAP[rawId];
+  const rawId = typeof report.categoryId === 'string' ? report.categoryId.trim().toLowerCase() : '';
+  if (Object.hasOwn(LEGACY_ID_MAP, rawId)) return LEGACY_ID_MAP[rawId];
   const fromLabel = guessFromLabel(report.categoryLabel);
   if (fromLabel) return fromLabel;
   return 'other';
@@ -119,8 +119,8 @@ const STATUS_META = {
  * Provides neutral fallback for unknown statuses.
  */
 export function getStatusMeta(status) {
-  if (status && STATUS_META[status]) return STATUS_META[status];
-  return { label: status || 'Unknown', color: '#8E8E93', bg: '#f2f2f7', icon: 'help-circle-outline' };
+  if (typeof status === 'string' && Object.hasOwn(STATUS_META, status)) return STATUS_META[status];
+  return { label: typeof status === 'string' && status ? status : 'Unknown', color: '#8E8E93', bg: '#f2f2f7', icon: 'help-circle-outline' };
 }
 
 // ─── Photo parsing ─────────────────────────────────────────────────────────────

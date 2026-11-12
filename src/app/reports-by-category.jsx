@@ -9,8 +9,8 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -27,7 +27,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SEVERITY_META } from '../utils/severity';
 
-import { getReportsFromDatabase } from '../services/reportService';
+import { getReportsFromDatabase, isLocalDemoMode } from '../services/reportService';
 import {
   FILTER_CATEGORIES,
   formatReportDate,
@@ -187,7 +187,7 @@ export default function ReportsByCategory() {
     }
   }, []);
 
-  useEffect(() => { fetchReports(false); }, [fetchReports]);
+  useFocusEffect(useCallback(() => { fetchReports(false); }, [fetchReports]));
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -285,7 +285,7 @@ export default function ReportsByCategory() {
       </TouchableOpacity>
       <View style={styles.headerTitleWrap}>
         <Text style={styles.headerTitle} numberOfLines={1}>Reports by Category</Text>
-        <Text style={styles.headerSubtitle} numberOfLines={1}>Explore water issues by type</Text>
+        <Text style={styles.headerSubtitle} numberOfLines={1}>{isLocalDemoMode ? 'Demo mode · reports saved on this device' : 'Explore water issues by type'}</Text>
       </View>
     </View>
   );
