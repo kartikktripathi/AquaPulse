@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { saveReportToDatabase } from '../services/reportService';
 import { calculateDistanceMeters, reverseGeocode } from '../utils/geo';
 
 export const PROBLEM_CATEGORIES = [
@@ -88,6 +89,7 @@ export default function ReportModal({
   const [status, setStatus] = useState(PROBLEM_STATUSES[0].id);
 
   const [isProcessingPhotos, setIsProcessingPhotos] = useState(false);
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [errors, setErrors] = useState({});
   const [isSubmitted, setIsSubmitted] = useState(false);
 
@@ -278,7 +280,7 @@ export default function ReportModal({
     }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const newErrors = {};
 
     if (!problemName.trim()) {
@@ -334,6 +336,15 @@ export default function ReportModal({
       distanceFromUser: distance,
       createdAt: new Date().toISOString(),
     };
+
+    setIsSubmittingReport(true);
+    try {
+      await saveReportToDatabase(reportData);
+    } catch (saveError) {
+      console.warn('Database save warning:', saveError);
+    } finally {
+      setIsSubmittingReport(false);
+    }
 
     if (onSubmit) {
       onSubmit(reportData);
@@ -946,10 +957,25 @@ export default function ReportModal({
                 {/* Submit button */}
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  style={styles.primaryButton}
-                  onPress={handleSubmit}>
-                  <Ionicons name="paper-plane" size={19} color="#ffffff" />
-                  <Text style={styles.primaryButtonText}>Submit Report</Text>
+                  style={[
+                    styles.primaryButton,
+                    isSubmittingReport ? styles.primaryButtonDisabled : null,
+                  ]}
+                  onPress={handleSubmit}
+                  disabled={isSubmittingReport}>
+                  {isSubmittingReport ? (
+                    <>
+                      <ActivityIndicator size="small" color="#ffffff" />
+                      <Text style={styles.primaryButtonText}>
+                        Saving to Database...
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="paper-plane" size={19} color="#ffffff" />
+                      <Text style={styles.primaryButtonText}>Submit Report</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1449,6 +1475,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 4,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.7,
   },
   primaryButtonText: {
     fontSize: 16,

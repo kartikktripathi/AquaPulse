@@ -1,0 +1,27 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Report {
+  id               String   @id @default(uuid())
+  name             String
+  categoryId       String
+  categoryLabel    String
+  addressLine1     String
+  addressLine2     String?
+  landmark         String
+  description      String
+  photos           String   @default("[]") // JSON string of photo URIs
+  status           String   @default("reported")
+  latitude         Float
+  longitude        Float
+  userLatitude     Float?
+  userLongitude    Float?
+  distanceFromUser Float    @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}

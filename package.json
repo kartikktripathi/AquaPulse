@@ -5,6 +5,8 @@
   "dependencies": {
     "@expo/ui": "~58.0.27",
     "@expo/vector-icons": "^15.0.2",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
     "expo": "~58.0.23",
     "expo-constants": "~58.0.15",
     "expo-device": "~58.0.5",
@@ -20,6 +22,7 @@
     "expo-symbols": "~58.0.4",
     "expo-system-ui": "~58.0.7",
     "expo-web-browser": "~58.0.7",
+    "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
@@ -38,5 +41,9 @@
     "web": "expo start --web",
     "lint": "expo lint"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "prisma": "^7.10.1",
+    "typescript": "~6.0.3"
+  }
 }

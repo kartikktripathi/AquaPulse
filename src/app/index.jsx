@@ -883,47 +883,67 @@ export default function Index() {
 
             {/* Sidebar Content */}
             <View style={styles.sidebarContent}>
-              <View style={styles.sidebarMenu}>
-                {SIDEBAR_ITEMS.map((item) => (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.sidebarMenuItem}
-                    activeOpacity={0.7}
-                    onPress={closeSidebar}
-                    accessibilityRole="button"
-                    accessibilityLabel={item.title}>
-                    <View
-                      style={[
-                        styles.sidebarMenuIconBubble,
-                        { backgroundColor: item.bgColor },
-                      ]}>
-                      <Ionicons
-                        name={item.icon}
-                        size={20}
-                        color={item.iconColor}
-                      />
-                    </View>
-                    <View style={styles.sidebarMenuTextWrap}>
-                      <Text style={styles.sidebarMenuItemTitle}>
-                        {item.title}
-                      </Text>
-                      <Text style={styles.sidebarMenuItemSubtitle}>
-                        {item.subtitle}
-                      </Text>
-                    </View>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={17}
-                      color="#c7c7cc"
-                    />
-                  </TouchableOpacity>
-                ))}
+              <View>
+                {/* Status indicator */}
+                <View style={styles.sidebarStatusPill}>
+                  <View style={styles.sidebarStatusDot} />
+                  <Text style={styles.sidebarStatusText}>
+                    AquaPulse Network Active
+                  </Text>
+                </View>
+
+                {/* Section Title */}
+                <Text style={styles.sidebarSectionTitle}>Menu</Text>
+
+                {/* Navigation List */}
+                <View style={styles.sidebarMenu}>
+                  {SIDEBAR_ITEMS.map((item, index) => {
+                    const isLast = index === SIDEBAR_ITEMS.length - 1;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[
+                          styles.sidebarMenuItem,
+                          !isLast ? styles.sidebarMenuItemBorder : null,
+                        ]}
+                        activeOpacity={0.6}
+                        onPress={closeSidebar}
+                        accessibilityRole="button"
+                        accessibilityLabel={item.title}>
+                        <View
+                          style={[
+                            styles.sidebarMenuIconBubble,
+                            { backgroundColor: item.bgColor },
+                          ]}>
+                          <Ionicons
+                            name={item.icon}
+                            size={20}
+                            color={item.iconColor}
+                          />
+                        </View>
+                        <View style={styles.sidebarMenuTextWrap}>
+                          <Text style={styles.sidebarMenuItemTitle}>
+                            {item.title}
+                          </Text>
+                          <Text style={styles.sidebarMenuItemSubtitle}>
+                            {item.subtitle}
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name="chevron-forward"
+                          size={17}
+                          color="#c7c7cc"
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
 
               <View style={styles.sidebarFooter}>
                 <Text style={styles.sidebarFooterVersion}>AquaPulse v1.0.0</Text>
                 <Text style={styles.sidebarFooterText}>
-                  Smart City Water Network & Monitoring
+                  City Water Management & Community Reporting
                 </Text>
               </View>
             </View>
@@ -1214,18 +1234,51 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     justifyContent: 'space-between',
   },
+  sidebarStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#eefbf2',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    marginBottom: 20,
+    gap: 6,
+  },
+  sidebarStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#22c55e',
+  },
+  sidebarStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#15803d',
+  },
+  sidebarSectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8e8e93',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
   sidebarMenu: {
-    gap: 8,
+    backgroundColor: '#ffffff',
   },
   sidebarMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: '#f8f9fa',
-    borderWidth: 1,
-    borderColor: '#f0f0f2',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+  },
+  sidebarMenuItemBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#ebebf0',
   },
   sidebarMenuIconBubble: {
     width: 38,
@@ -1233,19 +1286,19 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   sidebarMenuTextWrap: {
     flex: 1,
   },
   sidebarMenuItemTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: '#1c1c1e',
     marginBottom: 2,
   },
   sidebarMenuItemSubtitle: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#8e8e93',
   },
   sidebarFooter: {
