@@ -25,6 +25,15 @@ import { mapHtml } from '../utils/mapHtml';
 
 const SIDEBAR_ITEMS = [
   {
+    id: 'all_reports',
+    title: 'All Reports',
+    subtitle: 'Search reports and view full details',
+    icon: 'list-outline',
+    iconColor: '#007aff',
+    bgColor: '#eff6ff',
+    route: '/reports',
+  },
+  {
     id: 'reports_by_category',
     title: 'Reports by Category',
     subtitle: 'Browse water issues by type',
@@ -433,7 +442,7 @@ export default function Index() {
               style={styles.reportAction} accessibilityRole="button" accessibilityState={{ disabled: !isMapReady || !mapReports.length }}>
               <Text style={[styles.reportActionText, (!isMapReady || !mapReports.length) && { color: '#8e8e93' }]}>Fit reports</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/reports-by-category')} style={styles.reportAction} accessibilityRole="button">
+            <TouchableOpacity onPress={() => router.push('/reports')} style={styles.reportAction} accessibilityRole="button">
               <Text style={styles.reportActionText}>View list</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={refreshReports} disabled={reportsLoading} style={styles.reportAction} accessibilityRole="button" accessibilityLabel="Refresh map reports">
@@ -627,7 +636,7 @@ export default function Index() {
             </View>
 
             {/* Sidebar Content */}
-            <View style={styles.sidebarContent}>
+            <ScrollView contentContainerStyle={styles.sidebarContent} showsVerticalScrollIndicator={false}>
               <View>
                 {/* Section Title */}
                 <Text style={styles.sidebarSectionTitle}>Menu</Text>
@@ -686,7 +695,7 @@ export default function Index() {
                   City Water Management & Community Reporting
                 </Text>
               </View>
-            </View>
+            </ScrollView>
           </Animated.View>
         </View>
       </Modal>
@@ -977,7 +986,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sidebarContent: {
-    flex: 1,
+    flexGrow: 1,
     paddingTop: 16,
     paddingBottom: 8,
     justifyContent: 'space-between',
