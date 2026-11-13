@@ -218,32 +218,34 @@ export default function ReportsScreen({ categoryMode = false }) {
   return (
     <View style={styles.root}>
       {renderHeader()}
-      {categoryMode && renderChipRow()}
-
-      <View style={styles.searchRow}>
-        <Ionicons name="search-outline" size={20} color="#627083" />
-        <TextInput value={query} onChangeText={setQuery} placeholder="Search title, location or description"
-          accessibilityLabel="Search reports" style={styles.searchInput} returnKeyType="search" onSubmitEditing={Keyboard.dismiss} maxLength={160} />
-        {!!query && <TouchableOpacity onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear report search" style={styles.clearSearch}>
-          <Ionicons name="close-circle" size={22} color="#627083" />
-        </TouchableOpacity>}
-      </View>
-      <ReportFilters />
-      <View style={styles.listTools}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortRow}>
-          {REPORT_SORT_OPTIONS.map((option) => <TouchableOpacity key={option.id} onPress={() => setSort(option.id)}
-            accessibilityRole="radio" accessibilityLabel={`Sort reports: ${option.label}`} aria-checked={sort === option.id}
-            accessibilityState={{ checked: sort === option.id }} style={[styles.sortChip, sort === option.id && styles.sortSelected]}>
-            <Text style={[styles.sortText, sort === option.id && { color: '#007AFF' }]}>{option.label}</Text>
-          </TouchableOpacity>)}
-        </ScrollView>
-        <Text style={styles.resultCount} accessibilityLiveRegion="polite">
-          {query.trim() ? `${listedReports.length} of ${filteredReports.length} match this search` : 'Tap a report to see full details'}
-        </Text>
-      </View>
-
       <FlatList
         ref={listRef}
+        style={styles.list}
+        ListHeaderComponent={<View style={styles.controls}>
+          <View style={styles.searchRow}>
+            <Ionicons name="search-outline" size={20} color="#627083" />
+            <TextInput value={query} onChangeText={setQuery} placeholder="Search reports or location"
+              accessibilityLabel="Search reports" style={styles.searchInput} returnKeyType="search" onSubmitEditing={Keyboard.dismiss} maxLength={160} />
+            {!!query && <TouchableOpacity onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear report search" style={styles.clearSearch}>
+              <Ionicons name="close-circle" size={22} color="#627083" />
+            </TouchableOpacity>}
+          </View>
+          {categoryMode && renderChipRow()}
+          <ReportFilters compact />
+          <View style={styles.listTools}>
+            <ScrollView horizontal style={styles.sortScroll} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortRow}>
+              {REPORT_SORT_OPTIONS.map((option) => <TouchableOpacity key={option.id} onPress={() => setSort(option.id)}
+                accessibilityRole="radio" accessibilityLabel={`Sort reports: ${option.label}`} aria-checked={sort === option.id}
+                accessibilityState={{ checked: sort === option.id }} style={[styles.sortChip, sort === option.id && styles.sortSelected]}>
+                <Text style={[styles.sortText, sort === option.id && { color: '#007AFF' }]}>{option.label}</Text>
+              </TouchableOpacity>)}
+            </ScrollView>
+            {!!query.trim() && <Text style={styles.resultCount} accessibilityLiveRegion="polite">
+              {listedReports.length} of {filteredReports.length} match this search
+            </Text>}
+          </View>
+
+        </View>}
         data={listedReports}
         keyExtractor={(item, index) =>
           item.id != null ? String(item.id) : `report_${index}`
@@ -323,19 +325,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#e5e5ea',
-    maxHeight: 54,
+    flexGrow: 0,
+    flexShrink: 0,
   },
   chipRowContent: {
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 6,
     gap: 8,
     flexDirection: 'row',
     alignItems: 'center',
   },
   chip: {
+    minHeight: 44,
+    flexShrink: 0,
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 20,
     borderWidth: 1.5,
@@ -348,6 +354,7 @@ const styles = StyleSheet.create({
   },
   chipText: {
     fontSize: 13,
+    lineHeight: 20,
     fontWeight: '500',
     color: '#3a3a3c',
   },
@@ -355,6 +362,10 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
   },
+
+  // Controls live inside the list so short screens and large text never compress them.
+  list: { flex: 1 },
+  controls: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 12, paddingBottom: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#e5eaf0' },
 
   // List
   listContent: {
@@ -366,14 +377,15 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
 
-  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, margin: 12, marginBottom: 0, backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe3ed', borderRadius: 14, paddingLeft: 12 },
-  searchInput: { flex: 1, minWidth: 0, minHeight: 46, fontSize: 14, color: '#243447' },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, margin: 12, marginBottom: 6, backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe3ed', borderRadius: 14, paddingLeft: 12 },
+  searchInput: { flex: 1, minWidth: 0, minHeight: 46, paddingVertical: 10, paddingRight: 8, fontSize: 14, color: '#243447' },
   clearSearch: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  listTools: { paddingBottom: 8, gap: 6 },
-  sortRow: { paddingHorizontal: 14, gap: 8 },
-  sortChip: { paddingHorizontal: 12, minHeight: 40, justifyContent: 'center', borderRadius: 20, borderWidth: 1, borderColor: '#dbe3ed' },
+  listTools: { gap: 6, paddingTop: 4 },
+  sortScroll: { flexGrow: 0, flexShrink: 0 },
+  sortRow: { paddingHorizontal: 12, paddingVertical: 4, alignItems: 'center', gap: 8 },
+  sortChip: { paddingHorizontal: 12, minHeight: 44, paddingVertical: 10, flexShrink: 0, justifyContent: 'center', borderRadius: 22, borderWidth: 1, borderColor: '#dbe3ed' },
   sortSelected: { backgroundColor: '#e7f1ff', borderColor: '#b2d2ff' },
-  sortText: { color: '#627083', fontSize: 12, fontWeight: '600' },
+  sortText: { color: '#627083', fontSize: 12, lineHeight: 18, fontWeight: '600' },
   resultCount: { paddingHorizontal: 16, color: '#627083', fontSize: 12 },
 
   // Loading

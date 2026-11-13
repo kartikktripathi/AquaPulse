@@ -86,14 +86,14 @@ function FilterSheet({ onClose }) {
   </Modal>;
 }
 
-export default function ReportFilters({ map = false }) {
+export default function ReportFilters({ map = false, compact = false }) {
   const { filters, filteredReports, mapReports, resetFilters, loading, error, source, refreshReports } = useReportExplorer();
   const [open, setOpen] = useState(false);
   const active = getActiveFilterCount(filters);
   const summary = getFilterSummary(filters);
   const count = map ? mapReports.length : filteredReports.length;
   const missing = filteredReports.length - mapReports.length;
-  return <View style={styles.toolbar}>
+  return <View style={[styles.toolbar, compact && styles.compactToolbar]}>
     <View style={styles.toolbarRow}>
       <Text style={[styles.count, styles.grow]} accessibilityLiveRegion="polite">
         {loading ? 'Loading reports…' : source === 'unavailable' ? 'Reports unavailable' : `${count} ${map ? 'on map' : `report${count === 1 ? '' : 's'}`}`}
@@ -107,7 +107,7 @@ export default function ReportFilters({ map = false }) {
         <Ionicons name="close-circle-outline" size={23} color="#526072" />
       </Pressable>}
     </View>
-    {summary ? <Text numberOfLines={2} style={styles.hint}>{summary}</Text> : null}
+    {summary ? <Text numberOfLines={compact ? undefined : 2} style={styles.hint}>{summary}</Text> : null}
     {!loading && !error && count === 0 && <Text style={styles.hint}>{active ? 'No matching reports. Change or clear the filters.' : 'No saved reports to show yet.'}</Text>}
     {map && missing > 0 && <Text style={styles.hint}>{missing} matching report{missing === 1 ? '' : 's'} without coordinates available in the list.</Text>}
     {error && <View style={styles.notice}>
@@ -122,6 +122,7 @@ export default function ReportFilters({ map = false }) {
 
 const styles = StyleSheet.create({
   toolbar: { backgroundColor: '#fff', padding: 12, gap: 5 },
+  compactToolbar: { paddingVertical: 4 },
   toolbarRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   count: { color: '#243447', fontWeight: '600', fontSize: 13 },
   grow: { flex: 1, minWidth: 0 },
