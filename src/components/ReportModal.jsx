@@ -468,11 +468,13 @@ export default function ReportModal({
                 </View>
 
                 <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={styles.primaryButton}
-                  onPress={handleClose}>
-                  <Ionicons name="checkmark-done" size={20} color="#ffffff" />
-                  <Text style={styles.primaryButtonText}>Done</Text>
+                  activeOpacity={0.82}
+                  style={styles.doneButton}
+                  onPress={handleClose}
+                  accessibilityRole="button"
+                  accessibilityLabel="Done, close report confirmation">
+                  <Ionicons name="checkmark-circle" size={20} color="#ffffff" />
+                  <Text style={styles.doneButtonText}>Done</Text>
                 </TouchableOpacity>
               </ScrollView>
             ) : (
@@ -1617,5 +1619,27 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     width: '60%',
     textAlign: 'right',
+  },
+  doneButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#007aff',
+    borderRadius: 14,
+    height: 52,
+    gap: 8,
+    marginTop: 6,
+    shadowColor: '#007aff',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  doneButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: 0.3,
   },
 });
