@@ -40,7 +40,10 @@
           "photosPermission": "AquaPulse needs photo library access to upload photos of water issues.",
           "cameraPermission": "AquaPulse needs camera access to photograph water issues."
         }
-      ]
+      ],
+      "expo-splash-screen",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "reactCompiler": true
