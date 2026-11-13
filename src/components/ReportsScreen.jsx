@@ -268,7 +268,13 @@ export default function ReportsScreen({ categoryMode = false }) {
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={Platform.OS !== 'web'}
       />
-      {selection && <ReportDetailsModal report={selectedReport} onClose={() => setSelection(null)} />}
+      {selection && (
+        <ReportDetailsModal
+          report={selectedReport}
+          onClose={() => setSelection(null)}
+          onPhotosUpdated={refreshReports}
+        />
+      )}
     </View>
   );
 }

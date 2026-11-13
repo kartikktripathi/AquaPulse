@@ -19,6 +19,14 @@ ON public."Report" FOR INSERT
 TO public
 WITH CHECK (true);
 
+-- Allow anyone (public/anon) to update reports (e.g. adding photos)
+DROP POLICY IF EXISTS "Allow public update access on Report" ON public."Report";
+CREATE POLICY "Allow public update access on Report"
+ON public."Report" FOR UPDATE
+TO public
+USING (true)
+WITH CHECK (true);
+
 -- 2. Storage Setup for the report-photos bucket
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('report-photos', 'report-photos', true)

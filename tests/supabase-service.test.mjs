@@ -20,21 +20,28 @@ async function loadModule(path, mocks) {
 }
 
 function clientMock({ rows = [], failRead = false, insertError = null, photoError = null } = {}) {
-  const state = { rows, failRead, insertError, photoError, inserts: [], ranges: [], uploads: [] };
+  const state = { rows, failRead, insertError, photoError, inserts: [], updates: [], ranges: [], uploads: [] };
   const client = {
     from(table) {
       assert.equal(table, 'Report');
       let payload;
+      let updatePayload;
       let start = 0;
       let end = 499;
       let signal;
       const query = {
         insert(value) { payload = value[0]; state.inserts.push(payload); return query; },
+        update(value) { updatePayload = value; state.updates.push(value); return query; },
+        eq(col, val) { return query; },
         select() { return query; },
         order() { return query; },
         range(from, to) { start = from; end = to; state.ranges.push([from, to]); return query; },
         abortSignal(value) { signal = value; return query; },
-        async single() { return state.insertError ? { error: state.insertError } : { data: payload }; },
+        async single() {
+          if (state.insertError) return { error: state.insertError };
+          if (updatePayload) return { data: { ...(state.rows[0] || {}), ...updatePayload } };
+          return { data: payload || state.rows[0] };
+        },
         then(resolve, reject) {
           return Promise.resolve(state.failRead || signal?.aborted
             ? { data: null, error: { message: 'TypeError: fetch failed' } }
@@ -167,4 +174,16 @@ test('location permission denial does not request a GPS fix', async () => {
     }, '../utils/nearbyReports.js': { readCoordinates },
   });
   await assert.rejects(service.getNearbyLocation(), (error) => error.code === 'permission');
+});
+
+test('addPhotosToReport uploads photos and appends to existing report photos list', async () => {
+  const existingReport = { ...report, id: 'rep-existing', photos: '["https://example.test/photo1.jpg"]' };
+  const { client, state } = clientMock({ rows: [existingReport] });
+  const service = await serviceFor(client);
+  const result = await service.addPhotosToReport('rep-existing', ['data:image/png;base64,aGVsbG8=']);
+  assert.equal(result.success, true);
+  assert.equal(result.photos.length, 2);
+  assert.equal(result.photos[0], 'https://example.test/photo1.jpg');
+  assert.match(result.photos[1], /^https:\/\//);
+  assert.equal(state.updates.length, 1);
 });

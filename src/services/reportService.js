@@ -243,6 +243,91 @@ export async function saveReportToDatabase(reportData) {
 }
 
 /**
+ * Append new photos to an existing report in Supabase and update local cache.
+ */
+export async function addPhotosToReport(reportId, newPhotos) {
+  try {
+    requireSupabase();
+    if (!reportId) throw new Error('Report ID is required.');
+    if (!Array.isArray(newPhotos) || newPhotos.length === 0) {
+      return { success: true, photos: [] };
+    }
+
+    // 1. Upload new photos to Supabase Storage
+    const uploadedUrls = await Promise.all(
+      newPhotos.map((item) => uploadPhotoToSupabase(item))
+    );
+    const validUrls = uploadedUrls.filter(Boolean);
+    if (validUrls.length === 0) {
+      throw new Error('No valid photos could be uploaded.');
+    }
+
+    // 2. Fetch current photos for this report
+    const { data: existing, error: fetchErr } = await supabase
+      .from('Report')
+      .select('*')
+      .eq('id', String(reportId))
+      .single();
+
+    if (fetchErr) {
+      throw fetchErr;
+    }
+
+    let currentPhotos = [];
+    try {
+      currentPhotos =
+        typeof existing?.photos === 'string'
+          ? JSON.parse(existing.photos)
+          : existing?.photos || [];
+      if (!Array.isArray(currentPhotos)) currentPhotos = [];
+    } catch (e) {
+      currentPhotos = [];
+    }
+
+    // Combine unique photo URLs
+    const combinedPhotos = [...currentPhotos];
+    for (const url of validUrls) {
+      if (!combinedPhotos.includes(url)) {
+        combinedPhotos.push(url);
+      }
+    }
+
+    // 3. Update Supabase Report row
+    const { data: updatedRow, error: updateErr } = await supabase
+      .from('Report')
+      .update({
+        photos: JSON.stringify(combinedPhotos),
+        updatedAt: new Date().toISOString(),
+      })
+      .eq('id', String(reportId))
+      .select()
+      .single();
+
+    if (updateErr) {
+      throw updateErr;
+    }
+
+    const formatted = formatSupabaseReport(updatedRow);
+    const cacheIndex = localReportsCache.findIndex(
+      (r) => String(r.id) === String(reportId)
+    );
+    if (cacheIndex !== -1) {
+      localReportsCache[cacheIndex] = formatted;
+    } else {
+      localReportsCache.unshift(formatted);
+    }
+
+    return { success: true, report: formatted, photos: combinedPhotos };
+  } catch (err) {
+    console.error('Error adding photos to report:', err);
+    return {
+      success: false,
+      error: readableError(err),
+    };
+  }
+}
+
+/**
  * Fetch all reports from Supabase.
  */
 export async function getReportsFromDatabase() {

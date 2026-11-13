@@ -13,6 +13,7 @@ import {
   NEARBY_RADII, filterNearbyReports, formatNearbyDistance, getNearbyPhotoUri, locateReports,
 } from '../utils/nearbyReports';
 import { SEVERITY_META } from '../utils/severity';
+import ReportDetailsModal from '../components/ReportDetailsModal';
 
 const CATEGORY_CHIPS = [
   { ...FILTER_CATEGORIES[0], label: 'All categories' },
@@ -31,7 +32,7 @@ function Action({ label, onPress, secondary = false }) {
   );
 }
 
-function NearbyCard({ item }) {
+function NearbyCard({ item, onSelect }) {
   const { report, distanceMeters } = item;
   const category = getCategoryMeta(report);
   const status = getStatusMeta(report.status);
@@ -40,7 +41,11 @@ function NearbyCard({ item }) {
   const [failedPhoto, setFailedPhoto] = useState(null);
 
   return (
-    <View style={[styles.card, { borderLeftColor: category.color }]}>
+    <Pressable
+      onPress={() => onSelect?.(report)}
+      accessibilityRole="button"
+      accessibilityLabel={`View details for ${report.name}`}
+      style={({ pressed }) => [styles.card, { borderLeftColor: category.color }, pressed && styles.pressed]}>
       <View style={styles.cardHeading}>
         <View style={styles.categoryLabel}>
           <Ionicons name={category.icon} color={category.color} size={16} />
@@ -68,7 +73,7 @@ function NearbyCard({ item }) {
             onError={() => setFailedPhoto(photoUri)} />
         )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -83,6 +88,7 @@ export default function NearbyReports() {
   const [location, setLocation] = useState(null);
   const [locationError, setLocationError] = useState(null);
   const [snapshot, setSnapshot] = useState({ reports: [], source: 'unavailable', fetchedAt: null });
+  const [selectedReport, setSelectedReport] = useState(null);
   const requestRef = useRef(null);
 
   const load = useCallback(async (refresh = false) => {
@@ -206,7 +212,7 @@ export default function NearbyReports() {
       <FlatList
         data={canBrowse ? nearby : []}
         keyExtractor={(item) => item.key}
-        renderItem={({ item }) => <NearbyCard item={item} />}
+        renderItem={({ item }) => <NearbyCard item={item} onSelect={setSelectedReport} />}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
         ListHeaderComponent={(
           <View>
@@ -281,6 +287,14 @@ export default function NearbyReports() {
         ListEmptyComponent={renderEmpty}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} colors={['#007AFF']} tintColor="#007AFF" />}
       />
+      {selectedReport && (
+        <ReportDetailsModal
+          report={selectedReport}
+          userCoords={location}
+          onClose={() => setSelectedReport(null)}
+          onPhotosUpdated={() => load(true)}
+        />
+      )}
     </View>
   );
 }

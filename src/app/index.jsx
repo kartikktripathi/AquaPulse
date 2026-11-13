@@ -615,7 +615,9 @@ export default function Index() {
       {selectedReport && (
         <ReportDetailsModal
           report={selectedReport}
+          userCoords={userCoords}
           onClose={() => setSelectedReport(null)}
+          onPhotosUpdated={() => refreshReports()}
         />
       )}
 
