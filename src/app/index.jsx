@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ReportModal from '../components/ReportModal';
+import ReportDetailsModal from '../components/ReportDetailsModal';
 import ReportFilters from '../components/ReportFilters';
 import { useReportExplorer } from '../context/ReportExplorerContext';
 
@@ -88,7 +89,7 @@ export default function Index() {
 
   const webViewRef = useRef(null);
   const iframeRef = useRef(null);
-  const { mapReports, refreshReports, loading: reportsLoading } = useReportExplorer();
+  const { reports, mapReports, refreshReports, loading: reportsLoading } = useReportExplorer();
   const legend = useMemo(() => [...new Map(mapReports.map((report) => [report.category, report])).values()], [mapReports]);
   useFocusEffect(useCallback(() => { refreshReports(); }, [refreshReports]));
 
@@ -108,8 +109,9 @@ export default function Index() {
   const [mapNotice, setMapNotice] = useState(null);
   const [isPickingOnMap, setIsPickingOnMap] = useState(false);
 
-  // Report modal state
+  // Report modal & details state
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [selectedReport, setSelectedReport] = useState(null);
 
   // Sidebar state & animations
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -223,6 +225,13 @@ export default function Index() {
         type: 'warning',
         message: `Outside 500m radius (${data.distance}m away). Please tap inside the blue circle.`,
       });
+    } else if (data.type === 'SELECT_REPORT') {
+      const match = (Array.isArray(reports) && reports.find((item) => String(item.id) === String(data.id))) ||
+                    (Array.isArray(mapReports) && mapReports.find((item) => String(item.id) === String(data.id))) ||
+                    data.report;
+      if (match) {
+        setSelectedReport(match);
+      }
     }
   };
 
@@ -592,6 +601,14 @@ export default function Index() {
           refreshReports();
         }}
       />
+
+      {/* Report Details Modal */}
+      {selectedReport && (
+        <ReportDetailsModal
+          report={selectedReport}
+          onClose={() => setSelectedReport(null)}
+        />
+      )}
 
       {/* Sidebar Modal Overlay */}
       <Modal

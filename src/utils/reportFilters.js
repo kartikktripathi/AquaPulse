@@ -1,5 +1,6 @@
-import { FILTER_CATEGORIES, getCategoryMeta, getStatusMeta, getUiCategoryId } from './categoryMeta.js';
-import { getReportCoordinates } from './nearbyReports.js';
+import { FILTER_CATEGORIES, getCategoryMeta, getStatusMeta, getUiCategoryId, parsePhotos } from './categoryMeta.js';
+import { getNearbyPhotoUri, getReportCoordinates } from './nearbyReports.js';
+import { DEPTH_OPTIONS, PEOPLE_OPTIONS, ROAD_OPTIONS, SEVERITY_META } from './severity.js';
 
 export const CATEGORY_OPTIONS = [...FILTER_CATEGORIES.slice(1),
   { id: 'other', label: 'Other water issue', color: '#8E8E93' }];
@@ -99,14 +100,37 @@ export function getMapReports(reports) {
     const coords = getReportCoordinates(report);
     if (!coords) return [];
     const category = getCategoryMeta(report);
-    const severity = clean(report.severity).toLowerCase();
+    const rawSeverity = clean(report.severity).toLowerCase();
+    const severity = ['low', 'medium', 'high'].includes(rawSeverity) ? rawSeverity : 'Not recorded';
+    const severityMeta = SEVERITY_META[rawSeverity] || { label: 'Not recorded', color: '#627083', bg: '#f0f3f7' };
+    const statusMeta = getStatusMeta(normalizeReportStatus(report.status));
+    const optionLabel = (options, value) => options.find((o) => o.id === clean(value).toLowerCase())?.label || null;
+    const photos = [...new Set(parsePhotos(report.photos).map((uri) => getNearbyPhotoUri([uri])).filter(Boolean))];
+
     return [{
-      ...coords, id: report.id, name: clean(report.name) || 'Untitled water issue',
-      category: category.label, color: category.color,
-      status: getStatusMeta(normalizeReportStatus(report.status)).label,
-      severity: ['low', 'medium', 'high'].includes(severity) ? severity : 'Not recorded',
+      ...coords,
+      id: report.id,
+      name: clean(report.name) || 'Untitled water issue',
+      category: category.label,
+      color: category.color,
+      status: statusMeta.label,
+      statusColor: statusMeta.color,
+      statusBg: statusMeta.bg,
+      severity,
+      severityLabel: severityMeta.label,
+      severityColor: severityMeta.color,
+      severityBg: severityMeta.bg,
+      description: clean(report.description),
       address: [report.addressLine1 || report.address?.line1, report.addressLine2 || report.address?.line2, report.landmark || report.address?.landmark].map(clean).filter(Boolean).join(', '),
+      addressLine: [clean(report.addressLine1 || report.address?.line1), clean(report.addressLine2 || report.address?.line2)].filter(Boolean).join(', '),
+      landmark: clean(report.landmark || report.address?.landmark),
       date: report.createdAt && Number.isFinite(Date.parse(report.createdAt)) ? new Date(report.createdAt).toLocaleDateString() : 'Date unavailable',
+      formattedDate: report.createdAt && Number.isFinite(Date.parse(report.createdAt)) ? new Date(report.createdAt).toLocaleString() : null,
+      waterDepth: optionLabel(DEPTH_OPTIONS, report.waterDepth),
+      peopleAffected: optionLabel(PEOPLE_OPTIONS, report.peopleAffected),
+      roadBlocked: optionLabel(ROAD_OPTIONS, report.roadBlocked),
+      photos,
+      rawReport: report,
     }];
   });
 }
