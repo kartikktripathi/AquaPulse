@@ -22,7 +22,10 @@ model Report {
   userLatitude     Float?
   userLongitude    Float?
   distanceFromUser Float    @default(0)
+  waterDepth       String?
+  peopleAffected   String?
+  roadBlocked      String?
+  severity         String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
-

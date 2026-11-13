@@ -50,6 +50,10 @@ export function formatSupabaseReport(row) {
         ? parseFloat(row.userLongitude)
         : null,
     distanceFromUser: parseFloat(row.distanceFromUser ?? 0),
+    waterDepth: row.waterDepth || null,
+    peopleAffected: row.peopleAffected || null,
+    roadBlocked: row.roadBlocked || null,
+    severity: row.severity || null,
     createdAt: row.createdAt || new Date().toISOString(),
     updatedAt: row.updatedAt || new Date().toISOString(),
   };
@@ -202,6 +206,10 @@ export async function saveReportToDatabase(reportData) {
       distanceFromUser: parseFloat(
         reportData.distanceFromUser ?? reportData.distance ?? 0
       ),
+      waterDepth: reportData.waterDepth || null,
+      peopleAffected: reportData.peopleAffected || null,
+      roadBlocked: reportData.roadBlocked || null,
+      severity: reportData.severity || null,
       createdAt: reportData.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -233,6 +241,10 @@ export async function saveReportToDatabase(reportData) {
       createdAt: reportData.createdAt || new Date().toISOString(),
       status: reportData.status || 'reported',
       photos: reportData.photos || [],
+      waterDepth: reportData.waterDepth || null,
+      peopleAffected: reportData.peopleAffected || null,
+      roadBlocked: reportData.roadBlocked || null,
+      severity: reportData.severity || null,
     };
 
     localReportsCache.unshift(fallbackReport);
