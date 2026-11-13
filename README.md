@@ -2,9 +2,8 @@
 
 ## AquaPulse connection and Nearby Reports
 
-Nearby Reports is restored using the shared Supabase backend. Configure the two
-`EXPO_PUBLIC_SUPABASE_*` settings in your ignored `.env`; `DATABASE_URL` and
-`DIRECT_URL` are for Prisma tooling and do not configure the app client by themselves.
+Nearby Reports is powered by the shared Supabase backend. Configure the two
+`EXPO_PUBLIC_SUPABASE_*` settings in your `.env`.
 See [.env.example](.env.example) for placeholders and
 [Nearby Reports setup and verification](docs/nearby-reports.md) for details.
 
