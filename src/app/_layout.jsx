@@ -12,6 +12,9 @@ export default function RootLayout() {
       <Stack.Screen name="reports" options={{ headerShown: false }} />
       <Stack.Screen name="reports-by-category" options={{ headerShown: false }} />
       <Stack.Screen name="nearby-reports" options={{ headerShown: false }} />
+      <Stack.Screen name="alerts" options={{ headerShown: false }} />
+      <Stack.Screen name="helpline" options={{ headerShown: false }} />
+      <Stack.Screen name="about" options={{ headerShown: false }} />
     </Stack>
     </ReportExplorerProvider>
   );

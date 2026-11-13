@@ -54,20 +54,20 @@ const SIDEBAR_ITEMS = [
   {
     id: 'alerts',
     title: 'Water Outages & Alerts',
-    subtitle: 'City supply schedules and alerts',
+    subtitle: 'Open issues and official information',
     icon: 'warning-outline',
     iconColor: '#ff9500',
     bgColor: '#fff8ed',
-    route: null,
+    route: '/alerts',
   },
   {
     id: 'helpline',
     title: 'Emergency Helpline',
-    subtitle: 'Contact municipal water control room',
+    subtitle: 'Emergency and municipal contacts',
     icon: 'call-outline',
     iconColor: '#34c759',
     bgColor: '#eefbf2',
-    route: null,
+    route: '/helpline',
   },
   {
     id: 'about',
@@ -76,7 +76,7 @@ const SIDEBAR_ITEMS = [
     icon: 'information-circle-outline',
     iconColor: '#5856d6',
     bgColor: '#f5f3ff',
-    route: null,
+    route: '/about',
   },
 ];
 
