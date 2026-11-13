@@ -1,22 +1,11 @@
-/**
- * src/app/reports-by-category.jsx
- * ────────────────────────────────
- * Category-wise Reports screen for AquaPulse.
- *
- * Shows all locally-available water issue reports with horizontal category
- * filter chips and polished report cards. Works safely with an empty cache
- * when the Express backend is offline.
- */
-
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Platform,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -27,7 +16,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SEVERITY_META } from '../utils/severity';
 
-import { getReportsFromDatabase } from '../services/reportService';
+import ReportFilters from '../components/ReportFilters';
+import { useReportExplorer } from '../context/ReportExplorerContext';
+import { filterReports, normalizeReportStatus } from '../utils/reportFilters';
 import {
   FILTER_CATEGORIES,
   formatReportDate,
@@ -36,34 +27,11 @@ import {
   getStatusMeta,
   getUiCategoryId,
   parsePhotos,
-  reportMatchesCategory,
 } from '../utils/categoryMeta';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BASE_CHIPS = FILTER_CATEGORIES; // includes 'all' as first entry
-
-const SEVERITY_CHIPS = [
-  { id: 'all', label: 'All' },
-  { id: 'low', label: 'Low' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'high', label: 'High' },
-];
-
-const STATUS_CHIPS = [
-  { id: 'all', label: 'All' },
-  { id: 'reported', label: getStatusMeta('reported').label },
-  { id: 'review', label: getStatusMeta('review').label },
-  { id: 'in_progress', label: getStatusMeta('in_progress').label },
-  { id: 'fixed', label: getStatusMeta('fixed').label },
-];
-
-const DATE_CHIPS = [
-  { id: 'all', label: 'All time' },
-  { id: 'today', label: 'Today' },
-  { id: '7days', label: '7 days' },
-  { id: '30days', label: '30 days' },
-];
 
 // ─── Standalone ReportCard Component ──────────────────────────────────────────
 
@@ -77,7 +45,7 @@ function ReportCard({ report }) {
     const photos = parsePhotos(report.photos);
     firstPhoto  = photos.length > 0 ? photos[0] : null;
     catMeta     = getCategoryMeta(report);
-    statusMeta  = getStatusMeta(report.status);
+    statusMeta  = getStatusMeta(normalizeReportStatus(report.status));
   } catch (_) {
     return null; // Skip genuinely broken cards without crashing the list
   }
@@ -156,103 +124,41 @@ export default function ReportsByCategory() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [reports, setReports]       = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError]           = useState(null);
-  const [selectedChip, setSelectedChip] = useState('all');
-  const [showFilters, setShowFilters] = useState(false);
-  const [selectedSeverity, setSelectedSeverity] = useState('all');
-  const [selectedStatus, setSelectedStatus] = useState('all');
-  const [selectedDate, setSelectedDate] = useState('all');
-
+  const { reports, filteredReports, filters, setFilters, resetFilters, loading, error, refreshReports, now } = useReportExplorer();
   const chipScrollRef = useRef(null);
-  const chipOffsets   = useRef({});
+  const chipOffsets = useRef({});
 
-  // ── Data fetching ──────────────────────────────────────────────────────────
-
-  const fetchReports = useCallback(async (isPullRefresh = false) => {
-    if (!isPullRefresh) setLoading(true);
-    setError(null);
-    try {
-      const data = await getReportsFromDatabase();
-      setReports(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.warn('[ReportsByCategory] fetch error:', err);
-      setError('Could not load reports. Please try again.');
-      setReports([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useFocusEffect(useCallback(() => { fetchReports(false); }, [fetchReports]));
-
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchReports(true);
-  }, [fetchReports]);
+  useFocusEffect(useCallback(() => { refreshReports(); }, [refreshReports]));
 
   // ── Category chip counts ───────────────────────────────────────────────────
 
   const categoryCounts = useMemo(() => {
-    const counts = { all: reports.length };
-    for (const report of reports) {
+    const candidates = filterReports(reports, { ...filters, categories: [] }, now);
+    const counts = { all: candidates.length };
+    for (const report of candidates) {
       const uid = getUiCategoryId(report);
       counts[uid] = (counts[uid] || 0) + 1;
     }
     return counts;
-  }, [reports]);
+  }, [reports, filters, now]);
 
   // Show the "Other" chip only when there are reports that need it
   const visibleChips = useMemo(() => {
-    const hasOther = (categoryCounts['other'] || 0) > 0;
+    const hasOther = reports.some((r) => getUiCategoryId(r) === 'other') || filters.categories.includes('other');
     if (!hasOther) return BASE_CHIPS;
     return [
       ...BASE_CHIPS,
       { id: 'other', label: 'Other', icon: 'ellipsis-horizontal-circle-outline', color: '#8E8E93' },
     ];
-  }, [categoryCounts]);
+  }, [reports, filters.categories]);
 
-  // ── Filtered list ──────────────────────────────────────────────────────────
-
-  const filteredReports = useMemo(() => {
-    const now = Date.now();
-    return reports.filter((r) => {
-      if (!reportMatchesCategory(r, selectedChip)) return false;
-      if (selectedSeverity !== 'all') {
-        if (r.severity !== selectedSeverity) return false;
-      }
-      if (selectedStatus !== 'all') {
-        if (r.status !== selectedStatus) return false;
-      }
-      if (selectedDate !== 'all') {
-        if (!r.createdAt) return false;
-        const createdMs = new Date(r.createdAt).getTime();
-        if (isNaN(createdMs)) return false;
-        const diffMs = now - createdMs;
-        if (selectedDate === 'today') {
-          if (diffMs > 86400000) return false;
-        } else if (selectedDate === '7days') {
-          if (diffMs > 7 * 86400000) return false;
-        } else if (selectedDate === '30days') {
-          if (diffMs > 30 * 86400000) return false;
-        }
-      }
-      return true;
-    });
-  }, [reports, selectedChip, selectedSeverity, selectedStatus, selectedDate]);
-
-  // ── Chip selection ─────────────────────────────────────────────────────────
-
+  // Quick category chips use the same multi-selection as the filter sheet.
   const handleChipPress = useCallback((chipId) => {
-    setSelectedChip(chipId);
+    setFilters((old) => ({ ...old, categories: chipId === 'all' ? [] : old.categories.includes(chipId)
+      ? old.categories.filter((id) => id !== chipId) : [...old.categories, chipId] }));
     const offset = chipOffsets.current[chipId];
-    if (offset !== undefined && chipScrollRef.current) {
-      chipScrollRef.current.scrollTo({ x: Math.max(0, offset - 16), animated: true });
-    }
-  }, []);
+    if (offset !== undefined) chipScrollRef.current?.scrollTo({ x: Math.max(0, offset - 16), animated: true });
+  }, [setFilters]);
 
   // ── Back navigation ────────────────────────────────────────────────────────
 
@@ -260,13 +166,6 @@ export default function ReportsByCategory() {
     if (router.canGoBack()) router.back();
     else router.replace('/');
   }, [router]);
-
-  // ── Derived display helpers ────────────────────────────────────────────────
-
-  const selectedCategoryMeta = useMemo(
-    () => visibleChips.find((c) => c.id === selectedChip) || visibleChips[0],
-    [selectedChip, visibleChips]
-  );
 
   // ── Render Helpers ─────────────────────────────────────────────────────────
 
@@ -285,7 +184,7 @@ export default function ReportsByCategory() {
       </TouchableOpacity>
       <View style={styles.headerTitleWrap}>
         <Text style={styles.headerTitle} numberOfLines={1}>Reports by Category</Text>
-        <Text style={styles.headerSubtitle} numberOfLines={1}>Explore water issues by type</Text>
+        <Text style={styles.headerSubtitle} numberOfLines={1}>Select categories · filters also apply to the map</Text>
       </View>
     </View>
   );
@@ -297,9 +196,9 @@ export default function ReportsByCategory() {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.chipRowContent}
       style={styles.chipRow}
-      accessibilityRole="tablist">
+      >
       {visibleChips.map((chip) => {
-        const isSelected = selectedChip === chip.id;
+        const isSelected = chip.id === 'all' ? !filters.categories.length : filters.categories.includes(chip.id);
         const count = categoryCounts[chip.id] ?? 0;
         return (
           <TouchableOpacity
@@ -311,9 +210,10 @@ export default function ReportsByCategory() {
               styles.chip,
               isSelected && { backgroundColor: chip.color, borderColor: chip.color },
             ]}
-            accessibilityRole="tab"
+            accessibilityRole="checkbox"
             accessibilityLabel={`${chip.label}, ${count} reports`}
-            accessibilityState={{ selected: isSelected }}>
+            accessibilityState={{ checked: isSelected }}
+            aria-checked={isSelected}>
             <Ionicons
               name={chip.icon}
               size={14}
@@ -330,6 +230,19 @@ export default function ReportsByCategory() {
   );
 
   const renderEmpty = () => {
+    if (loading) return <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color="#007AFF" />
+      <Text style={styles.loadingText}>Loading reports…</Text>
+    </View>;
+    if (error && reports.length === 0) return <View style={styles.emptyContainer}>
+      <Ionicons name="cloud-offline-outline" size={60} color="#c7c7cc" />
+      <Text style={styles.emptyTitle}>Could not load reports</Text>
+      <Text style={styles.emptyBody}>{error}</Text>
+      <TouchableOpacity onPress={refreshReports} style={styles.emptyButton} accessibilityRole="button">
+        <Text style={styles.emptyButtonText}>Try Again</Text>
+      </TouchableOpacity>
+    </View>;
+
     if (reports.length === 0) {
       return (
         <View style={styles.emptyContainer}>
@@ -356,14 +269,13 @@ export default function ReportsByCategory() {
       <View style={styles.emptyContainer}>
         <Ionicons name="filter-outline" size={56} color="#c7c7cc" />
         <Text style={styles.emptyTitle}>
-          No {selectedCategoryMeta?.label || ''} reports found
+          No matching reports
         </Text>
         <Text style={styles.emptyBody}>
-          There are no reports in this category yet. Try a different filter or
-          check back later.
+          No reports match this combination. Change your filters or clear them to see all reports.
         </Text>
         <TouchableOpacity
-          onPress={() => setSelectedChip('all')}
+          onPress={resetFilters}
           activeOpacity={0.7}
           style={styles.emptyButton}
           accessibilityRole="button"
@@ -375,45 +287,6 @@ export default function ReportsByCategory() {
     );
   };
 
-  // ── Loading state ──────────────────────────────────────────────────────────
-
-  if (loading) {
-    return (
-      <View style={styles.root}>
-        {renderHeader()}
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={styles.loadingText}>Loading reports…</Text>
-        </View>
-      </View>
-    );
-  }
-
-  // ── Error state ────────────────────────────────────────────────────────────
-
-  if (error && reports.length === 0) {
-    return (
-      <View style={styles.root}>
-        {renderHeader()}
-        {renderChipRow()}
-        <View style={styles.emptyContainer}>
-          <Ionicons name="cloud-offline-outline" size={60} color="#c7c7cc" />
-          <Text style={styles.emptyTitle}>Could not load reports</Text>
-          <Text style={styles.emptyBody}>{error}</Text>
-          <TouchableOpacity
-            onPress={() => fetchReports(false)}
-            activeOpacity={0.7}
-            style={styles.emptyButton}
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading reports">
-            <Ionicons name="refresh-outline" size={18} color="#ffffff" />
-            <Text style={styles.emptyButtonText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
   // ── Normal render ──────────────────────────────────────────────────────────
 
   return (
@@ -421,115 +294,7 @@ export default function ReportsByCategory() {
       {renderHeader()}
       {renderChipRow()}
 
-      {showFilters && (
-        <View style={styles.filtersSection}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterChipRowContent}
-            style={styles.filterChipRow}>
-            {SEVERITY_CHIPS.map((chip) => {
-              const isSelected = selectedSeverity === chip.id;
-              return (
-                <Pressable
-                  key={chip.id}
-                  onPress={() => setSelectedSeverity(chip.id)}
-                  style={({ pressed }) => [
-                    styles.chip,
-                    isSelected && styles.filterChipSelected,
-                    pressed && { opacity: 0.6 },
-                  ]}>
-                  <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
-                    {chip.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterChipRowContent}
-            style={styles.filterChipRow}>
-            {STATUS_CHIPS.map((chip) => {
-              const isSelected = selectedStatus === chip.id;
-              return (
-                <Pressable
-                  key={chip.id}
-                  onPress={() => setSelectedStatus(chip.id)}
-                  style={({ pressed }) => [
-                    styles.chip,
-                    isSelected && styles.filterChipSelected,
-                    pressed && { opacity: 0.6 },
-                  ]}>
-                  <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
-                    {chip.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterChipRowContent}
-            style={styles.filterChipRow}>
-            {DATE_CHIPS.map((chip) => {
-              const isSelected = selectedDate === chip.id;
-              return (
-                <Pressable
-                  key={chip.id}
-                  onPress={() => setSelectedDate(chip.id)}
-                  style={({ pressed }) => [
-                    styles.chip,
-                    isSelected && styles.filterChipSelected,
-                    pressed && { opacity: 0.6 },
-                  ]}>
-                  <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
-                    {chip.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
-
-      {/* Summary pill */}
-      {reports.length > 0 && (
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryText}>
-            {filteredReports.length === 0
-              ? 'No results'
-              : filteredReports.length === 1
-              ? '1 report'
-              : `${filteredReports.length} reports`}
-            {selectedChip !== 'all' ? `  ·  ${selectedCategoryMeta?.label}` : ''}
-          </Text>
-          <Pressable
-            onPress={() => setShowFilters((prev) => !prev)}
-            style={({ pressed }) => [
-              styles.filterToggleBtn,
-              showFilters && styles.filterToggleBtnActive,
-              pressed && { opacity: 0.6 },
-            ]}>
-            <Ionicons
-              name="options-outline"
-              size={13}
-              color={showFilters ? '#ffffff' : '#007AFF'}
-            />
-            <Text
-              style={[
-                styles.filterToggleText,
-                showFilters && styles.filterToggleTextActive,
-              ]}>
-              Filters
-            </Text>
-          </Pressable>
-        </View>
-      )}
+      <ReportFilters />
 
       <FlatList
         data={filteredReports}
@@ -541,8 +306,8 @@ export default function ReportsByCategory() {
         ListEmptyComponent={renderEmpty}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
+            refreshing={loading}
+            onRefresh={refreshReports}
             tintColor="#007AFF"
             colors={['#007AFF']}
           />
@@ -640,65 +405,6 @@ const styles = StyleSheet.create({
   },
 
   // Summary row
-  summaryRow: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  summaryText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#8e8e93',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  filterToggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    backgroundColor: '#ffffff',
-  },
-  filterToggleBtnActive: {
-    backgroundColor: '#007AFF',
-  },
-  filterToggleText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#007AFF',
-  },
-  filterToggleTextActive: {
-    color: '#ffffff',
-  },
-  filtersSection: {
-    backgroundColor: '#ffffff',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e5ea',
-    paddingVertical: 6,
-    gap: 6,
-  },
-  filterChipRow: {
-    maxHeight: 44,
-  },
-  filterChipRowContent: {
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    gap: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  filterChipSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
-  },
-
   // List
   listContent: {
     paddingHorizontal: 14,

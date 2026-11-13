@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,299 +18,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ReportModal from '../components/ReportModal';
+import ReportFilters from '../components/ReportFilters';
+import { useReportExplorer } from '../context/ReportExplorerContext';
 
-const mapHtml = `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      html, body {
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        background-color: #f2efe9;
-      }
-      #map {
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        width: 100%;
-        height: 100%;
-        background-color: #f2efe9;
-      }
-      .user-marker-container {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-      }
-      .user-dot {
-        width: 14px;
-        height: 14px;
-        background-color: #007aff;
-        border: 2.5px solid #ffffff;
-        border-radius: 50%;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-        position: absolute;
-        z-index: 2;
-      }
-      .user-pulse {
-        width: 36px;
-        height: 36px;
-        background-color: rgba(0, 122, 255, 0.3);
-        border-radius: 50%;
-        position: absolute;
-        z-index: 1;
-        animation: pulse-ring 2s infinite ease-out;
-      }
-      @keyframes pulse-ring {
-        0% {
-          transform: scale(0.3);
-          opacity: 1;
-        }
-        80% {
-          transform: scale(1.4);
-          opacity: 0;
-        }
-        100% {
-          transform: scale(1.4);
-          opacity: 0;
-        }
-      }
-      .problem-marker-container {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-      }
-      .problem-pin {
-        width: 26px;
-        height: 26px;
-        border-radius: 50% 50% 50% 0;
-        background-color: #ff3b30;
-        transform: rotate(-45deg);
-        border: 2px solid #ffffff;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: absolute;
-        top: -24px;
-        left: -13px;
-        cursor: pointer;
-      }
-      .problem-pin-inner {
-        width: 8px;
-        height: 8px;
-        background-color: #ffffff;
-        border-radius: 50%;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="map"></div>
-    <script>
-      var map = L.map('map', {
-        zoomControl: false,
-        attributionControl: true
-      }).setView([20, 0], 2);
-
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      }).addTo(map);
-
-      var userMarker = null;
-      var radiusCircle = null;
-      var problemMarker = null;
-
-      var userIcon = L.divIcon({
-        className: 'user-marker-container',
-        html: '<div class="user-pulse"></div><div class="user-dot"></div>',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
-      });
-
-      var problemIcon = L.divIcon({
-        className: 'problem-marker-container',
-        html: '<div class="problem-pin"><div class="problem-pin-inner"></div></div>',
-        iconSize: [26, 26],
-        iconAnchor: [0, 0]
-      });
-
-      function postToApp(data) {
-        var str = typeof data === 'string' ? data : JSON.stringify(data);
-        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-          window.ReactNativeWebView.postMessage(str);
-        }
-        if (window.parent && window.parent !== window) {
-          window.parent.postMessage(data, '*');
-        }
-      }
-
-      function setUserLocation(lat, lng) {
-        if (!userMarker) {
-          userMarker = L.marker([lat, lng], { icon: userIcon, title: 'Your Location' }).addTo(map);
-        } else {
-          userMarker.setLatLng([lat, lng]);
-        }
-
-        // Draw / update 500m radius circle around user
-        if (!radiusCircle) {
-          radiusCircle = L.circle([lat, lng], {
-            radius: 500,
-            color: '#007aff',
-            weight: 2,
-            opacity: 0.85,
-            fillColor: '#007aff',
-            fillOpacity: 0.10,
-            dashArray: '6, 6'
-          }).addTo(map);
-        } else {
-          radiusCircle.setLatLng([lat, lng]);
-        }
-
-        if (!problemMarker) {
-          setProblemLocation(lat, lng, false);
-        }
-
-        map.invalidateSize();
-        map.flyTo([lat, lng], 16, { animate: true, duration: 1.2 });
-      }
-
-      function setProblemLocation(lat, lng, notify) {
-        if (!problemMarker) {
-          problemMarker = L.marker([lat, lng], {
-            icon: problemIcon,
-            draggable: true,
-            title: 'Problem Location'
-          }).addTo(map);
-
-          problemMarker.on('dragend', function(e) {
-            if (!userMarker) return;
-            var pos = e.target.getLatLng();
-            var dist = Math.round(map.distance(userMarker.getLatLng(), pos));
-            if (dist <= 500) {
-              postToApp({
-                type: 'PROBLEM_LOCATION_SET',
-                latitude: pos.lat,
-                longitude: pos.lng,
-                distance: dist,
-                withinRadius: true
-              });
-            } else {
-              var userPos = userMarker.getLatLng();
-              problemMarker.setLatLng(userPos);
-              postToApp({
-                type: 'PROBLEM_LOCATION_OUTSIDE',
-                latitude: pos.lat,
-                longitude: pos.lng,
-                distance: dist,
-                withinRadius: false
-              });
-            }
-          });
-        } else {
-          problemMarker.setLatLng([lat, lng]);
-        }
-
-        if (notify && userMarker) {
-          var dist = Math.round(map.distance(userMarker.getLatLng(), [lat, lng]));
-          postToApp({
-            type: 'PROBLEM_LOCATION_SET',
-            latitude: lat,
-            longitude: lng,
-            distance: dist,
-            withinRadius: dist <= 500
-          });
-        }
-      }
-
-      function resetProblemLocation() {
-        if (userMarker) {
-          var pos = userMarker.getLatLng();
-          setProblemLocation(pos.lat, pos.lng, true);
-        }
-      }
-
-      function fitReportingZone() {
-        if (radiusCircle) {
-          map.fitBounds(radiusCircle.getBounds(), { padding: [40, 40], animate: true });
-        }
-      }
-
-      map.on('click', function(e) {
-        if (!userMarker) return;
-        var userPos = userMarker.getLatLng();
-        var dist = Math.round(map.distance(userPos, e.latlng));
-        if (dist <= 500) {
-          setProblemLocation(e.latlng.lat, e.latlng.lng, true);
-        } else {
-          postToApp({
-            type: 'PROBLEM_LOCATION_OUTSIDE',
-            latitude: e.latlng.lat,
-            longitude: e.latlng.lng,
-            distance: dist,
-            withinRadius: false
-          });
-        }
-      });
-
-      window.setUserLocation = setUserLocation;
-      window.setProblemLocation = setProblemLocation;
-      window.resetProblemLocation = resetProblemLocation;
-      window.fitReportingZone = fitReportingZone;
-
-      function handleMessage(event) {
-        try {
-          var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-          if (!data) return;
-          if (data.type === 'SET_LOCATION') {
-            setUserLocation(data.latitude, data.longitude);
-          } else if (data.type === 'SET_PROBLEM_LOCATION') {
-            setProblemLocation(data.latitude, data.longitude, false);
-          } else if (data.type === 'RESET_PROBLEM_LOCATION') {
-            resetProblemLocation();
-          } else if (data.type === 'FIT_REPORTING_ZONE') {
-            fitReportingZone();
-          }
-        } catch(e) {}
-      }
-
-      window.addEventListener('message', handleMessage);
-      document.addEventListener('message', handleMessage);
-
-      function refreshSize() {
-        if (map) {
-          map.invalidateSize();
-        }
-      }
-
-      window.addEventListener('resize', refreshSize);
-
-      function notifyReady() {
-        refreshSize();
-        postToApp({ type: 'MAP_READY' });
-      }
-
-      setTimeout(notifyReady, 100);
-      setTimeout(refreshSize, 400);
-      setTimeout(refreshSize, 1000);
-    </script>
-  </body>
-</html>`;
+import { mapHtml } from '../utils/mapHtml';
 
 const SIDEBAR_ITEMS = [
   {
@@ -367,8 +79,12 @@ export default function Index() {
 
   const webViewRef = useRef(null);
   const iframeRef = useRef(null);
+  const { mapReports, refreshReports, loading: reportsLoading } = useReportExplorer();
+  const legend = useMemo(() => [...new Map(mapReports.map((report) => [report.category, report])).values()], [mapReports]);
+  useFocusEffect(useCallback(() => { refreshReports(); }, [refreshReports]));
 
   const [isMapReady, setIsMapReady] = useState(false);
+  const [mapGeneration, setMapGeneration] = useState(0);
   const [userCoords, setUserCoords] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
@@ -453,26 +169,10 @@ export default function Index() {
     }
   }, [isSidebarOpen, sidebarWidth]);
 
-  const sendToMap = (messageObj) => {
+  const sendToMap = useCallback((messageObj) => {
     if (Platform.OS === 'web') {
       try {
         iframeRef.current?.contentWindow?.postMessage(messageObj, '*');
-        if (messageObj.type === 'SET_LOCATION') {
-          iframeRef.current?.contentWindow?.setUserLocation?.(
-            messageObj.latitude,
-            messageObj.longitude
-          );
-        } else if (messageObj.type === 'SET_PROBLEM_LOCATION') {
-          iframeRef.current?.contentWindow?.setProblemLocation?.(
-            messageObj.latitude,
-            messageObj.longitude,
-            false
-          );
-        } else if (messageObj.type === 'RESET_PROBLEM_LOCATION') {
-          iframeRef.current?.contentWindow?.resetProblemLocation?.();
-        } else if (messageObj.type === 'FIT_REPORTING_ZONE') {
-          iframeRef.current?.contentWindow?.fitReportingZone?.();
-        }
       } catch (err) {
         console.warn('Error sending message to web iframe:', err);
       }
@@ -484,7 +184,11 @@ export default function Index() {
         true;
       `);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (isMapReady) sendToMap({ type: 'SET_REPORTS', reports: mapReports });
+  }, [isMapReady, mapGeneration, mapReports, sendToMap]);
 
   const sendLocationToMap = (latitude, longitude) => {
     sendToMap({ type: 'SET_LOCATION', latitude, longitude });
@@ -494,6 +198,7 @@ export default function Index() {
     if (!data) return;
     if (data.type === 'MAP_READY') {
       setIsMapReady(true);
+      setMapGeneration((version) => version + 1);
     } else if (data.type === 'PROBLEM_LOCATION_SET') {
       setProblemCoords({
         latitude: data.latitude,
@@ -582,7 +287,8 @@ export default function Index() {
       if (results && results.length > 0) {
         const lat = parseFloat(results[0].lat);
         const lon = parseFloat(results[0].lon);
-        sendLocationToMap(lat, lon);
+        // Searching moves the viewport; only GPS sets the user's reporting radius.
+        sendToMap({ type: 'PAN_TO_LOCATION', latitude: lat, longitude: lon });
       }
     } catch (err) {
       console.warn('Search geocoding error:', err);
@@ -598,6 +304,7 @@ export default function Index() {
   useEffect(() => {
     if (Platform.OS === 'web') {
       const handleWebMessage = (event) => {
+        if (event.source !== iframeRef.current?.contentWindow) return;
         let data = event.data;
         if (typeof data === 'string') {
           try {
@@ -615,7 +322,7 @@ export default function Index() {
     if (isMapReady && userCoords) {
       sendLocationToMap(userCoords.latitude, userCoords.longitude);
     }
-  }, [isMapReady, userCoords]);
+  }, [isMapReady, mapGeneration, userCoords]);
 
   return (
     <View style={styles.container}>
@@ -638,12 +345,6 @@ export default function Index() {
               right: 0,
               bottom: 0,
             }}
-            onLoad={() => {
-              setIsMapReady(true);
-              if (userCoords) {
-                sendLocationToMap(userCoords.latitude, userCoords.longitude);
-              }
-            }}
           />
         ) : (
           (() => {
@@ -663,12 +364,6 @@ export default function Index() {
                     const data = JSON.parse(event.nativeEvent.data);
                     handleMapMessage(data);
                   } catch (e) {}
-                }}
-                onLoadEnd={() => {
-                  setIsMapReady(true);
-                  if (userCoords) {
-                    sendLocationToMap(userCoords.latitude, userCoords.longitude);
-                  }
                 }}
               />
             );
@@ -729,6 +424,28 @@ export default function Index() {
               <Ionicons name="search" size={21} color="#333333" />
             )}
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.reportControls}>
+          <ReportFilters map />
+          <View style={styles.reportActions}>
+            <TouchableOpacity onPress={() => sendToMap({ type: 'FIT_REPORTS' })} disabled={!isMapReady || !mapReports.length}
+              style={styles.reportAction} accessibilityRole="button" accessibilityState={{ disabled: !isMapReady || !mapReports.length }}>
+              <Text style={[styles.reportActionText, (!isMapReady || !mapReports.length) && { color: '#8e8e93' }]}>Fit reports</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/reports-by-category')} style={styles.reportAction} accessibilityRole="button">
+              <Text style={styles.reportActionText}>View list</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={refreshReports} disabled={reportsLoading} style={styles.reportAction} accessibilityRole="button" accessibilityLabel="Refresh map reports">
+              <Ionicons name="refresh" size={18} color={reportsLoading ? '#8e8e93' : '#007AFF'} />
+            </TouchableOpacity>
+          </View>
+          {legend.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.legend}>
+            {legend.map((item) => <View key={item.category} style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+              <Text style={styles.legendText}>{item.category}</Text>
+            </View>)}
+          </ScrollView>}
         </View>
 
         {/* Picking Location on Map Banner */}
@@ -861,9 +578,9 @@ export default function Index() {
             sendToMap({ type: 'RESET_PROBLEM_LOCATION' });
           }
         }}
-        onSubmit={(report) => {
-          console.log('New water problem report submitted:', report);
+        onSubmit={() => {
           setIsPickingOnMap(false);
+          refreshReports();
         }}
       />
 
@@ -997,6 +714,14 @@ const styles = StyleSheet.create({
   },
 
   /* Search Bar */
+  reportControls: { marginTop: 8, width: '100%', maxWidth: 580, backgroundColor: '#fff', borderRadius: 18, overflow: 'hidden', elevation: 3 },
+  reportActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderTopWidth: StyleSheet.hairlineWidth, borderColor: '#e9edf2' },
+  reportAction: { minHeight: 40, minWidth: 44, justifyContent: 'center', alignItems: 'center' },
+  reportActionText: { color: '#007AFF', fontSize: 13, fontWeight: '600' },
+  legend: { paddingHorizontal: 12, paddingBottom: 10, gap: 14 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 9, height: 9, borderRadius: 5 },
+  legendText: { fontSize: 11, color: '#526072' },
   searchBarWrapper: {
     position: 'absolute',
     left: 16,
