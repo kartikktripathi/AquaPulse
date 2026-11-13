@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -145,6 +146,14 @@ export default function Index() {
     setTimeout(() => {
       setIsSidebarOpen(false);
     }, 250);
+  };
+
+  const handleOpenGithub = async () => {
+    try {
+      await Linking.openURL('https://github.com/kartikktripathi/AquaPulse');
+    } catch (err) {
+      console.warn('Could not open GitHub link:', err);
+    }
   };
 
   useEffect(() => {
@@ -707,6 +716,17 @@ export default function Index() {
               </View>
 
               <View style={styles.sidebarFooter}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={styles.sidebarGithubLink}
+                  onPress={handleOpenGithub}
+                  accessibilityRole="link"
+                  accessibilityLabel="View AquaPulse on GitHub">
+                  <Ionicons name="logo-github" size={18} color="#24292f" />
+                  <Text style={styles.sidebarGithubText}>View on GitHub</Text>
+                  <Ionicons name="open-outline" size={13} color="#8e8e93" />
+                </TouchableOpacity>
+
                 <Text style={styles.sidebarFooterVersion}>AquaPulse v1.0.0</Text>
                 <Text style={styles.sidebarFooterText}>
                   City Water Management & Community Reporting
@@ -1080,6 +1100,24 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#e5e5ea',
     alignItems: 'center',
+  },
+  sidebarGithubLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    backgroundColor: '#f6f8fa',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e1e4e8',
+    marginBottom: 12,
+  },
+  sidebarGithubText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#24292f',
   },
   sidebarFooterVersion: {
     fontSize: 12,
