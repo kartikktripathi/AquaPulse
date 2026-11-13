@@ -60,3 +60,34 @@ export function searchAndSortReports(reports, query = '', sort = 'newest') {
     return sort === 'oldest' ? aTime - bTime : bTime - aTime;
   });
 }
+
+export function getReportTitleSuggestions(reports, query = '', limit = 8) {
+  const q = text(query).toLowerCase();
+  if (!q) return [];
+
+  const prefixMatches = [];
+  const otherMatches = [];
+  const seenIds = new Set();
+
+  for (const report of Array.isArray(reports) ? reports : []) {
+    if (!report || typeof report !== 'object' || Array.isArray(report)) continue;
+    const title = text(report.name);
+    if (!title) continue;
+
+    const titleLower = title.toLowerCase();
+    if (titleLower.includes(q)) {
+      const id = report.id ? String(report.id) : titleLower;
+      if (!seenIds.has(id)) {
+        seenIds.add(id);
+        if (titleLower.startsWith(q)) {
+          prefixMatches.push(report);
+        } else {
+          otherMatches.push(report);
+        }
+      }
+    }
+  }
+
+  return [...prefixMatches, ...otherMatches].slice(0, limit);
+}
+

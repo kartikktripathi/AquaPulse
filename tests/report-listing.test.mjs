@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getReportDetails, getReportPhotos, searchAndSortReports } from '../src/utils/reportListing.js';
+import { getReportDetails, getReportPhotos, getReportTitleSuggestions, searchAndSortReports } from '../src/utils/reportListing.js';
 import { createReportFilters, filterReports } from '../src/utils/reportFilters.js';
 
 const records = [
@@ -77,3 +77,44 @@ test('photo gallery preserves all safe unique URIs and rejects malformed or exec
   assert.deepEqual(getReportPhotos(photo), [photo]);
   for (const value of ['[broken', {}, '', 'data:image/svg+xml,<svg/>', ['data:image/png;base64,undefined']]) assert.deepEqual(getReportPhotos(value), []);
 });
+
+test('getReportTitleSuggestions suggests matching report titles with prefix prioritization and deduplication', () => {
+  const sampleReports = [
+    { id: '1', name: 'Broken pipe in Sector 4' },
+    { id: '2', name: 'Pipe burst near market' },
+    { id: '3', name: 'Water contamination alert' },
+    { id: '4', name: 'Drain overflow' },
+    { id: '5', name: 'Severe Pipe leakage' },
+    { id: '6', name: 'Pipe replacement needed' },
+    { id: '7', name: '' },
+    null,
+    { id: '8', name: 123 },
+  ];
+
+  // Prefix matches ('Pipe burst...', 'Pipe replacement...') come before substring matches ('Broken pipe...', 'Severe Pipe...')
+  const pipeSuggestions = getReportTitleSuggestions(sampleReports, 'pipe');
+  assert.equal(pipeSuggestions.length, 4);
+  assert.deepEqual(pipeSuggestions.map((r) => r.id), ['2', '6', '1', '5']);
+
+  // Case insensitive and trimming
+  assert.equal(getReportTitleSuggestions(sampleReports, '  DRAIN  ').length, 1);
+  assert.equal(getReportTitleSuggestions(sampleReports, '  DRAIN  ')[0].id, '4');
+
+  // Empty or whitespace query returns empty array
+  assert.deepEqual(getReportTitleSuggestions(sampleReports, ''), []);
+  assert.deepEqual(getReportTitleSuggestions(sampleReports, '   '), []);
+  assert.deepEqual(getReportTitleSuggestions(null, 'pipe'), []);
+
+  // Limit works
+  const limited = getReportTitleSuggestions(sampleReports, 'pipe', 2);
+  assert.equal(limited.length, 2);
+  assert.deepEqual(limited.map((r) => r.id), ['2', '6']);
+
+  // Deduplication by ID
+  const duplicateReports = [
+    { id: 'dup-1', name: 'Water logging' },
+    { id: 'dup-1', name: 'Water logging' },
+  ];
+  assert.equal(getReportTitleSuggestions(duplicateReports, 'water').length, 1);
+});
+

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Keyboard,
   Linking,
   Modal,
   Platform,
@@ -22,6 +23,9 @@ import ReportModal from '../components/ReportModal';
 import ReportDetailsModal from '../components/ReportDetailsModal';
 import ReportFilters from '../components/ReportFilters';
 import { useReportExplorer } from '../context/ReportExplorerContext';
+import { getCategoryMeta } from '../utils/categoryMeta';
+import { getReportCoordinates } from '../utils/nearbyReports';
+import { getReportTitleSuggestions } from '../utils/reportListing';
 
 import { mapHtml } from '../utils/mapHtml';
 
@@ -103,6 +107,8 @@ export default function Index() {
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const blurTimeoutRef = useRef(null);
 
   // Problem coordinates & 500m radius reporting state
   const [problemCoords, setProblemCoords] = useState(null);
@@ -294,9 +300,107 @@ export default function Index() {
     }
   };
 
+  const allReports = useMemo(() => {
+    if (Array.isArray(reports) && reports.length > 0) return reports;
+    if (Array.isArray(mapReports) && mapReports.length > 0) return mapReports;
+    return [];
+  }, [reports, mapReports]);
+
+  const searchSuggestions = useMemo(() => {
+    return getReportTitleSuggestions(allReports, searchQuery, 8);
+  }, [allReports, searchQuery]);
+
+  const showSuggestions = isSearchFocused && searchQuery.trim().length > 0;
+
+  const handleSearchFocus = () => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setIsSearchFocused(true);
+  };
+
+  const handleSearchBlur = () => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+    }
+    blurTimeoutRef.current = setTimeout(() => {
+      setIsSearchFocused(false);
+    }, 200);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) {
+        clearTimeout(blurTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleSelectSuggestion = (item) => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setIsSearchFocused(false);
+    Keyboard.dismiss();
+
+    const title = (item.name || '').trim();
+    if (title) {
+      setSearchQuery(title);
+    }
+
+    const coords = getReportCoordinates(item) || (
+      item.latitude && item.longitude
+        ? { latitude: Number(item.latitude), longitude: Number(item.longitude) }
+        : null
+    );
+
+    if (coords && Number.isFinite(coords.latitude) && Number.isFinite(coords.longitude)) {
+      sendToMap({
+        type: 'PAN_TO_LOCATION',
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      });
+    }
+
+    const fullReport =
+      (Array.isArray(reports) && reports.find((r) => String(r.id) === String(item.id))) ||
+      item;
+    setSelectedReport(fullReport);
+  };
+
+  const handleClearSearch = () => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setSearchQuery('');
+    setIsSearchFocused(false);
+  };
+
   const handleSearch = async () => {
     const query = searchQuery.trim();
     if (!query) return;
+
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setIsSearchFocused(false);
+    Keyboard.dismiss();
+
+    // Prioritize matching report title
+    const queryLower = query.toLowerCase();
+    const exactMatch = allReports.find(
+      (r) => (r.name || '').trim().toLowerCase() === queryLower
+    );
+    const bestMatch = exactMatch || searchSuggestions[0];
+
+    if (bestMatch) {
+      handleSelectSuggestion(bestMatch);
+      return;
+    }
 
     try {
       setIsSearching(true);
@@ -316,6 +420,11 @@ export default function Index() {
         const lon = parseFloat(results[0].lon);
         // Searching moves the viewport; only GPS sets the user's reporting radius.
         sendToMap({ type: 'PAN_TO_LOCATION', latitude: lat, longitude: lon });
+      } else {
+        setMapNotice({
+          type: 'warning',
+          message: `No reports or locations found matching "${query}"`,
+        });
       }
     } catch (err) {
       console.warn('Search geocoding error:', err);
@@ -420,17 +529,22 @@ export default function Index() {
 
           <TextInput
             style={styles.searchInput}
-            placeholder="Search on AquaPulse"
+            placeholder="Search report titles..."
             placeholderTextColor="#8e8e93"
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={(text) => {
+              setSearchQuery(text);
+              if (!isSearchFocused) setIsSearchFocused(true);
+            }}
+            onFocus={handleSearchFocus}
+            onBlur={handleSearchBlur}
             returnKeyType="search"
             onSubmitEditing={handleSearch}
           />
 
           {searchQuery.length > 0 && (
             <TouchableOpacity
-              onPress={() => setSearchQuery('')}
+              onPress={handleClearSearch}
               activeOpacity={0.6}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={styles.iconButton}
@@ -453,27 +567,118 @@ export default function Index() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.reportControls}>
-          <ReportFilters map />
-          <View style={styles.reportActions}>
-            <TouchableOpacity onPress={() => sendToMap({ type: 'FIT_REPORTS' })} disabled={!isMapReady || !mapReports.length}
-              style={styles.reportAction} accessibilityRole="button" accessibilityState={{ disabled: !isMapReady || !mapReports.length }}>
-              <Text style={[styles.reportActionText, (!isMapReady || !mapReports.length) && { color: '#8e8e93' }]}>Fit reports</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/reports')} style={styles.reportAction} accessibilityRole="button">
-              <Text style={styles.reportActionText}>View list</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={refreshReports} disabled={reportsLoading} style={styles.reportAction} accessibilityRole="button" accessibilityLabel="Refresh map reports">
-              <Ionicons name="refresh" size={18} color={reportsLoading ? '#8e8e93' : '#007AFF'} />
-            </TouchableOpacity>
+        {/* Report Title Suggestions Dropdown */}
+        {showSuggestions && (
+          <View style={styles.suggestionsContainer} pointerEvents="auto">
+            <View style={styles.suggestionsHeader}>
+              <Ionicons name="search" size={13} color="#64748b" />
+              <Text style={styles.suggestionsHeaderText}>
+                MATCHING REPORT TITLES ({searchSuggestions.length})
+              </Text>
+            </View>
+
+            {searchSuggestions.length > 0 ? (
+              <ScrollView
+                style={styles.suggestionsScroll}
+                contentContainerStyle={styles.suggestionsScrollContent}
+                keyboardShouldPersistTaps="always"
+                nestedScrollEnabled>
+                {searchSuggestions.map((item, index) => {
+                  const meta = getCategoryMeta(item.category || item.categoryId || item.categoryLabel);
+                  const locationHint =
+                    item.addressLine1 ||
+                    item.addressLine ||
+                    item.address ||
+                    item.landmark ||
+                    (item.distanceFromUser ? `${Math.round(item.distanceFromUser)}m away` : null);
+
+                  return (
+                    <TouchableOpacity
+                      key={item.id ? String(item.id) : `sugg-${index}`}
+                      style={[
+                        styles.suggestionItem,
+                        index < searchSuggestions.length - 1 && styles.suggestionItemBorder,
+                      ]}
+                      onPress={() => handleSelectSuggestion(item)}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Select report ${item.name}`}>
+                      <View
+                        style={[
+                          styles.suggestionIconWrap,
+                          { backgroundColor: (meta?.color || '#007aff') + '18' },
+                        ]}>
+                        <Ionicons
+                          name={meta?.icon || 'water'}
+                          size={16}
+                          color={meta?.color || '#007aff'}
+                        />
+                      </View>
+                      <View style={styles.suggestionTextWrap}>
+                        <Text style={styles.suggestionTitle} numberOfLines={1}>
+                          {item.name || 'Untitled Report'}
+                        </Text>
+                        <View style={styles.suggestionMetaRow}>
+                          <Text
+                            style={[
+                              styles.suggestionCategory,
+                              { color: meta?.color || '#007aff' },
+                            ]}
+                            numberOfLines={1}>
+                            {item.categoryLabel || item.category || meta?.label || 'Water Issue'}
+                          </Text>
+                          {locationHint ? (
+                            <>
+                              <Text style={styles.suggestionDot}>•</Text>
+                              <Text style={styles.suggestionAddress} numberOfLines={1}>
+                                {locationHint}
+                              </Text>
+                            </>
+                          ) : null}
+                        </View>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <View style={styles.emptySuggestions}>
+                <Ionicons name="information-circle-outline" size={20} color="#94a3b8" />
+                <Text style={styles.emptySuggestionsText}>
+                  No report titles matching "{searchQuery.trim()}"
+                </Text>
+                <Text style={styles.emptySuggestionsSubtext}>
+                  Press search to find this location on the map
+                </Text>
+              </View>
+            )}
           </View>
-          {legend.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.legend}>
-            {legend.map((item) => <View key={item.category} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-              <Text style={styles.legendText}>{item.category}</Text>
-            </View>)}
-          </ScrollView>}
-        </View>
+        )}
+
+        {!showSuggestions && (
+          <View style={styles.reportControls}>
+            <ReportFilters map />
+            <View style={styles.reportActions}>
+              <TouchableOpacity onPress={() => sendToMap({ type: 'FIT_REPORTS' })} disabled={!isMapReady || !mapReports.length}
+                style={styles.reportAction} accessibilityRole="button" accessibilityState={{ disabled: !isMapReady || !mapReports.length }}>
+                <Text style={[styles.reportActionText, (!isMapReady || !mapReports.length) && { color: '#8e8e93' }]}>Fit reports</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push('/reports')} style={styles.reportAction} accessibilityRole="button">
+                <Text style={styles.reportActionText}>View list</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={refreshReports} disabled={reportsLoading} style={styles.reportAction} accessibilityRole="button" accessibilityLabel="Refresh map reports">
+                <Ionicons name="refresh" size={18} color={reportsLoading ? '#8e8e93' : '#007AFF'} />
+              </TouchableOpacity>
+            </View>
+            {legend.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.legend}>
+              {legend.map((item) => <View key={item.category} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                <Text style={styles.legendText}>{item.category}</Text>
+              </View>)}
+            </ScrollView>}
+          </View>
+        )}
 
         {/* Picking Location on Map Banner */}
         {isPickingOnMap && (
@@ -812,6 +1017,110 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 19,
+  },
+
+  /* Search Suggestions Dropdown */
+  suggestionsContainer: {
+    width: '100%',
+    maxWidth: 580,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 8,
+    overflow: 'hidden',
+    zIndex: 101,
+  },
+  suggestionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    backgroundColor: '#f8fafc',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  suggestionsHeaderText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 0.5,
+  },
+  suggestionsScroll: {
+    maxHeight: 260,
+  },
+  suggestionsScrollContent: {
+    paddingVertical: 4,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    gap: 12,
+  },
+  suggestionItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  suggestionIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  suggestionTextWrap: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  suggestionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 2,
+  },
+  suggestionMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  suggestionCategory: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  suggestionDot: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  suggestionAddress: {
+    fontSize: 11,
+    color: '#64748b',
+    flex: 1,
+  },
+  emptySuggestions: {
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  emptySuggestionsText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+    textAlign: 'center',
+  },
+  emptySuggestionsSubtext: {
+    fontSize: 11,
+    color: '#94a3b8',
+    textAlign: 'center',
   },
 
   /* Permission Banner */
