@@ -9,8 +9,8 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -187,7 +187,7 @@ export default function ReportsByCategory() {
     }
   }, []);
 
-  useEffect(() => { fetchReports(false); }, [fetchReports]);
+  useFocusEffect(useCallback(() => { fetchReports(false); }, [fetchReports]));
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);

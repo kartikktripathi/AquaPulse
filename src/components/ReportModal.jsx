@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FILTER_CATEGORIES } from '../utils/categoryMeta';
 import { saveReportToDatabase } from '../services/reportService';
 import { calculateDistanceMeters, reverseGeocode } from '../utils/geo';
+import { readCoordinates } from '../utils/nearbyReports';
 import {
   DEPTH_OPTIONS,
   PEOPLE_OPTIONS,
@@ -254,6 +255,7 @@ export default function ReportModal({
   };
 
   const handleSubmit = async () => {
+    if (isSubmittingReport) return;
     const newErrors = {};
 
     if (!problemName.trim()) {
@@ -289,7 +291,9 @@ export default function ReportModal({
     }
 
     // 500m Radius Circle Constraint
-    if (distance > 500) {
+    if (!readCoordinates(activeProblemCoords) || !readCoordinates(userCoords)) {
+      newErrors.radius = 'Enable location and choose a problem location before submitting.';
+    } else if (distance > 500) {
       newErrors.radius = `Problem location is ${distance}m away. It must be within 500m of where you are.`;
     }
 
@@ -333,6 +337,7 @@ export default function ReportModal({
         setIsSubmittingReport(false);
         return;
       }
+      onSubmit?.(result.report);
     } catch (saveError) {
       console.warn('Database save warning:', saveError);
       setSubmitError('Submission failed due to a network error. Tap Try again.');
@@ -340,10 +345,6 @@ export default function ReportModal({
       return;
     }
     setIsSubmittingReport(false);
-
-    if (onSubmit) {
-      onSubmit(reportData);
-    }
 
     setIsSubmitted(true);
   };

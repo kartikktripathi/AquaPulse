@@ -42,7 +42,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "server": "node src/server/index.js",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test:nearby": "node --experimental-vm-modules --test tests/nearby-reports.test.mjs tests/supabase-service.test.mjs",
+    "check:backend": "node scripts/check-supabase.mjs"
   },
   "private": true,
   "devDependencies": {

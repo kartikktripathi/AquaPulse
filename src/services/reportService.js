@@ -1,6 +1,21 @@
-import { supabase, supabaseAdmin } from '../lib/supabase.js';
+import { supabase } from '../lib/supabase.js';
+import { readCoordinates } from '../utils/nearbyReports.js';
 
 let localReportsCache = [];
+let reportsFetchedAt = null;
+
+function requireSupabase() {
+  if (!supabase) throw new Error('Supabase is not configured. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in .env, then restart Expo.');
+  return supabase;
+}
+
+function readableError(error) {
+  const message = error?.message || 'The report service could not complete this request.';
+  if (/abort|cancel|fetch failed|failed to fetch|network request failed/i.test(message)) {
+    return 'Could not reach Supabase. Check your internet connection and try again.';
+  }
+  return message;
+}
 
 /**
  * Convert base64 string to ArrayBuffer for reliable binary uploads across platforms.
@@ -19,7 +34,8 @@ function base64ToArrayBuffer(base64) {
  * Format a Supabase Report row into standard app report object.
  */
 export function formatSupabaseReport(row) {
-  if (!row) return null;
+  if (!row || typeof row !== 'object') return null;
+  const coordinates = readCoordinates(row);
   let parsedPhotos = [];
   try {
     parsedPhotos =
@@ -39,8 +55,8 @@ export function formatSupabaseReport(row) {
     description: row.description || '',
     photos: Array.isArray(parsedPhotos) ? parsedPhotos : [],
     status: row.status || 'reported',
-    latitude: parseFloat(row.latitude ?? 0),
-    longitude: parseFloat(row.longitude ?? 0),
+    latitude: coordinates?.latitude ?? null,
+    longitude: coordinates?.longitude ?? null,
     userLatitude:
       row.userLatitude !== null && row.userLatitude !== undefined
         ? parseFloat(row.userLatitude)
@@ -61,7 +77,8 @@ export function formatSupabaseReport(row) {
 
 /**
  * Upload a photo (local file://, blob:, data URI, or object { uri, base64 }) to Supabase Storage bucket 'report-photos'.
- * Returns public CDN URL on success, or original URI if upload fails.
+ * Returns a public CDN URL. Upload failures stop submission so local-only photos
+ * are never advertised as shared report evidence.
  */
 export async function uploadPhotoToSupabase(photoItem) {
   if (!photoItem) return null;
@@ -88,7 +105,7 @@ export async function uploadPhotoToSupabase(photoItem) {
       .substring(2, 8)}.${cleanExt}`;
     const filePath = `${fileName}`;
     const contentType =
-      explicitMime || `image/${cleanExt === 'jpg' ? 'jpeg' : cleanExt}`;
+      explicitMime || rawUri?.match(/^data:(image\/[^;]+);base64,/)?.[1] || `image/${cleanExt === 'jpg' ? 'jpeg' : cleanExt}`;
 
     let arrayBuffer = null;
 
@@ -110,36 +127,19 @@ export async function uploadPhotoToSupabase(photoItem) {
     }
 
     if (!arrayBuffer) {
-      console.warn('Could not extract arrayBuffer for photo:', rawUri);
-      return rawUri;
+      throw new Error('This photo could not be read. Please choose it again.');
     }
 
     // 1. Try uploading using anon client
-    let { data, error } = await supabase.storage
+    const { error } = await requireSupabase().storage
       .from('report-photos')
       .upload(filePath, arrayBuffer, {
         contentType,
-        upsert: true,
+        upsert: false,
       });
 
-    // 2. If blocked by RLS in development, fallback to admin client
-    if (error && error.message?.includes('row-level security') && supabaseAdmin) {
-      console.warn(
-        'Storage RLS blocked anon client, using admin fallback for photo upload...'
-      );
-      const adminResult = await supabaseAdmin.storage
-        .from('report-photos')
-        .upload(filePath, arrayBuffer, {
-          contentType,
-          upsert: true,
-        });
-      data = adminResult.data;
-      error = adminResult.error;
-    }
-
     if (error) {
-      console.error('Supabase storage upload error:', error.message);
-      return rawUri;
+      throw new Error(`Photo upload failed: ${readableError(error)}`);
     }
 
     const { data: publicData } = supabase.storage
@@ -147,10 +147,11 @@ export async function uploadPhotoToSupabase(photoItem) {
       .getPublicUrl(filePath);
 
     console.log('Photo uploaded to Supabase Storage CDN:', publicData?.publicUrl);
-    return publicData?.publicUrl || rawUri;
+    if (!publicData?.publicUrl) throw new Error('Photo upload did not return a public URL.');
+    return publicData.publicUrl;
   } catch (err) {
     console.error('Error uploading photo to Supabase storage:', err);
-    return rawUri;
+    throw err;
   }
 }
 
@@ -159,6 +160,9 @@ export async function uploadPhotoToSupabase(photoItem) {
  */
 export async function saveReportToDatabase(reportData) {
   try {
+    requireSupabase();
+    const coordinates = readCoordinates(reportData.coordinates) || readCoordinates(reportData);
+    if (!coordinates) throw new Error('A valid report location is required. Enable location and choose the problem pin before submitting.');
     // 1. Upload any local photos to Supabase Storage
     let uploadedPhotos = [];
     if (Array.isArray(reportData.photos) && reportData.photos.length > 0) {
@@ -185,12 +189,8 @@ export async function saveReportToDatabase(reportData) {
       description: reportData.description || '',
       photos: JSON.stringify(uploadedPhotos),
       status: reportData.status || 'reported',
-      latitude: parseFloat(
-        reportData.coordinates?.latitude ?? reportData.latitude ?? 0
-      ),
-      longitude: parseFloat(
-        reportData.coordinates?.longitude ?? reportData.longitude ?? 0
-      ),
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
       userLatitude:
         reportData.userCoordinates?.latitude !== undefined
           ? parseFloat(reportData.userCoordinates.latitude)
@@ -235,24 +235,9 @@ export async function saveReportToDatabase(reportData) {
       err.message
     );
 
-    const fallbackReport = {
-      ...reportData,
-      id: reportData.id || `local_${Date.now()}`,
-      createdAt: reportData.createdAt || new Date().toISOString(),
-      status: reportData.status || 'reported',
-      photos: reportData.photos || [],
-      waterDepth: reportData.waterDepth || null,
-      peopleAffected: reportData.peopleAffected || null,
-      roadBlocked: reportData.roadBlocked || null,
-      severity: reportData.severity || null,
-    };
-
-    localReportsCache.unshift(fallbackReport);
     return {
       success: false,
-      report: fallbackReport,
-      isLocalFallback: true,
-      error: err.message,
+      error: readableError(err),
     };
   }
 }
@@ -261,24 +246,39 @@ export async function saveReportToDatabase(reportData) {
  * Fetch all reports from Supabase.
  */
 export async function getReportsFromDatabase() {
+  const snapshot = await getReportsSnapshot();
+  if (snapshot.source === 'unavailable') throw new Error(snapshot.error);
+  return snapshot.reports;
+}
+
+/** Page through shared reports so nearby filtering is not limited to the first page. */
+export async function getReportsSnapshot({ signal } = {}) {
   try {
-    const { data, error } = await supabase
-      .from('Report')
-      .select('*')
-      .order('createdAt', { ascending: false });
-
-    if (error) {
-      throw error;
+    const client = requireSupabase();
+    const reports = [];
+    const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
+      if (signal?.aborted) throw new Error('Request cancelled.');
+      let query = client.from('Report').select('*')
+        .order('createdAt', { ascending: false }).order('id', { ascending: false })
+        .range(offset, offset + pageSize - 1);
+      if (signal) query = query.abortSignal(signal);
+      const { data, error } = await query;
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new Error('Supabase returned an invalid report list.');
+      reports.push(...data.map(formatSupabaseReport).filter(Boolean));
+      if (data.length < pageSize) break;
     }
-
-    if (Array.isArray(data)) {
-      const formatted = data.map(formatSupabaseReport);
-      localReportsCache = formatted;
-      return formatted;
-    }
+    if (signal?.aborted) throw new Error('Request cancelled.');
+    localReportsCache = reports;
+    reportsFetchedAt = new Date().toISOString();
+    return { reports, source: 'network', fetchedAt: reportsFetchedAt };
   } catch (err) {
-    console.warn('Could not fetch from Supabase Report table:', err.message);
+    return {
+      reports: localReportsCache,
+      source: reportsFetchedAt || localReportsCache.length ? 'cache' : 'unavailable',
+      fetchedAt: reportsFetchedAt,
+      error: readableError(err),
+    };
   }
-
-  return localReportsCache;
 }

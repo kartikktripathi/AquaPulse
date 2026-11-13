@@ -1,5 +1,17 @@
 # Welcome to your Expo app 👋
 
+## AquaPulse connection and Nearby Reports
+
+Nearby Reports is restored using the shared Supabase backend. Configure the two
+`EXPO_PUBLIC_SUPABASE_*` settings in your ignored `.env`; `DATABASE_URL` and
+`DIRECT_URL` are for Prisma tooling and do not configure the app client by themselves.
+See [.env.example](.env.example) for placeholders and
+[Nearby Reports setup and verification](docs/nearby-reports.md) for details.
+
+Restart Expo after changing environment settings: `npx expo start --clear`.
+Use `npm run test:nearby` for regression tests and `npm run check:backend` for a
+read-only Supabase connection check.
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started
