@@ -18,7 +18,7 @@ export async function getNearbyLocation({ signal } = {}) {
     else signal?.addEventListener('abort', abortRequest, { once: true });
     timeoutId = setTimeout(() => reject(locationError(
       'timeout', 'Finding your location took too long. Move to an open area and try again.'
-    )), 20000);
+    )), 10000);
   });
 
   const locate = async () => {
@@ -37,9 +37,8 @@ export async function getNearbyLocation({ signal } = {}) {
     checkActive();
     const position = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.High,
-      // Expo web otherwise permits an indefinitely cached browser fix.
       maximumAge: 0,
-      timeout: 15000,
+      timeout: 10000,
     });
     const coordinates = readCoordinates(position?.coords);
     if (!coordinates) throw locationError('unavailable', 'Your device did not return a usable location. Please try again.');

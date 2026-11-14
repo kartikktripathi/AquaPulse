@@ -3,9 +3,11 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
-// This module is bundled into Expo. Only the public anon key belongs here;
-// database passwords and service-role keys must remain in server tooling.
 async function fetchWithTimeout(url, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    return await fetch(url, options);
+  }
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (options.signal?.aborted) abort();
@@ -17,12 +19,6 @@ async function fetchWithTimeout(url, options = {}) {
     clearTimeout(timer);
     options.signal?.removeEventListener('abort', abort);
   }
-}
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    'Supabase URL or Anon Key is missing from environment variables (.env).'
-  );
 }
 
 export const supabase =
