@@ -1,4 +1,3 @@
-// Official sources checked 13 November 2026. Review these periodically; do not guess local numbers.
 export const HELP_CONTACTS = [
   { id: 'india-emergency', name: 'Emergency assistance', region: 'Across India', number: '112', dial: '112',
     description: 'For immediate danger requiring police, fire, medical or disaster assistance.',

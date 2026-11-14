@@ -97,7 +97,6 @@ export const mapHtml = `<!DOCTYPE html>
         border-radius: 50%;
       }
 
-      /* Saved Report Pin Markers */
       .report-pin-marker {
         width: 28px;
         height: 38px;
@@ -135,7 +134,6 @@ export const mapHtml = `<!DOCTYPE html>
         box-shadow: 0 0 0 2px #ff3b30, 0 2px 6px rgba(255, 59, 48, 0.4);
       }
 
-      /* Custom Leaflet Popup & Report Card Styles */
       .leaflet-popup-content-wrapper {
         background: #ffffff;
         border-radius: 16px;
@@ -332,7 +330,6 @@ export const mapHtml = `<!DOCTYPE html>
           if (!report || !Number.isFinite(report.latitude) || !Number.isFinite(report.longitude) ||
               Math.abs(report.latitude) > 90 || Math.abs(report.longitude) > 180) return;
 
-          // Teardrop pin marker styled with category color & severity accents
           var pin = document.createElement('div');
           pin.className = 'report-pin-marker' + ((report.severity || '').toLowerCase() === 'high' ? ' high-severity' : '');
 
@@ -354,17 +351,14 @@ export const mapHtml = `<!DOCTYPE html>
             popupAnchor: [0, -32]
           });
 
-          // Rich interactive report card popup
           var popup = document.createElement('div');
           popup.className = 'report-card-popup';
 
-          // Report title (kept as children[0] for security textContent verification)
           var titleEl = document.createElement('div');
           titleEl.className = 'report-card-title';
           titleEl.textContent = report.name || 'Untitled water issue';
           popup.appendChild(titleEl);
 
-          // Badges row: Category, Severity, Status
           var badgesEl = document.createElement('div');
           badgesEl.className = 'report-card-badges';
 
@@ -404,7 +398,6 @@ export const mapHtml = `<!DOCTYPE html>
             popup.appendChild(badgesEl);
           }
 
-          // Description
           if (report.description && report.description !== 'No description provided.') {
             var descEl = document.createElement('div');
             descEl.className = 'report-card-desc';
@@ -412,7 +405,6 @@ export const mapHtml = `<!DOCTYPE html>
             popup.appendChild(descEl);
           }
 
-          // Address & Landmark
           var addressText = report.addressLine || report.address || '';
           var landmarkText = report.landmark || '';
           if (addressText || landmarkText) {
@@ -430,7 +422,6 @@ export const mapHtml = `<!DOCTYPE html>
             popup.appendChild(locEl);
           }
 
-          // Impact Assessment grid (Water Depth, People Affected, Road Access)
           var hasDepth = report.waterDepth && report.waterDepth !== 'Not recorded';
           var hasPeople = report.peopleAffected && report.peopleAffected !== 'Not recorded';
           var hasRoad = report.roadBlocked && report.roadBlocked !== 'Not recorded';
@@ -459,7 +450,6 @@ export const mapHtml = `<!DOCTYPE html>
             }
           }
 
-          // Metadata footer (Date and distance from user)
           var metaEl = document.createElement('div');
           metaEl.className = 'report-card-meta';
           var dateSpan = document.createElement('span');
@@ -473,7 +463,6 @@ export const mapHtml = `<!DOCTYPE html>
           }
           popup.appendChild(metaEl);
 
-          // Action Button: View full details
           var btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'report-card-btn';
@@ -538,7 +527,6 @@ export const mapHtml = `<!DOCTYPE html>
           userMarker.setLatLng([lat, lng]);
         }
 
-        // Draw / update 500m radius circle around user
         if (!radiusCircle) {
           radiusCircle = L.circle([lat, lng], {
             radius: 500,

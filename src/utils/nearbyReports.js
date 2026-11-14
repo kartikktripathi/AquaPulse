@@ -28,7 +28,6 @@ export function getReportCoordinates(report) {
   return readCoordinates(report) || readCoordinates(report?.coordinates);
 }
 
-// Normalize display fields before calling the shared category/card helpers.
 export function normalizeNearbyReport(report) {
   const address = report.address && typeof report.address === 'object' ? report.address : {};
   const rawStatus = text(report.status).toLowerCase();

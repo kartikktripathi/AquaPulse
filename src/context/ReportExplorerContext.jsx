@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { getReportsSnapshot } from '../services/reportService';
 import { createReportFilters, filterReports, getMapReports } from '../utils/reportFilters';
+import { reportEvents } from '../utils/reportEvents';
 
 const ReportExplorerContext = createContext(null);
 
@@ -28,10 +29,23 @@ export function ReportExplorerProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // Keep calendar presets correct when the app remains open across midnight.
     const timer = setInterval(() => setNow(new Date()), 60000);
     return () => { clearInterval(timer); request.current?.abort(); };
   }, []);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      refreshReports();
+    };
+    reportEvents.on('report:created', handleUpdate);
+    reportEvents.on('report:photos-added', handleUpdate);
+    reportEvents.on('report:resolved', handleUpdate);
+    return () => {
+      reportEvents.off('report:created', handleUpdate);
+      reportEvents.off('report:photos-added', handleUpdate);
+      reportEvents.off('report:resolved', handleUpdate);
+    };
+  }, [refreshReports]);
 
   const resetFilters = useCallback(() => setFilters(createReportFilters()), []);
   const filterClock = ['today', '7days', '30days'].includes(filters.date) ? now : null;
