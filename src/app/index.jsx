@@ -26,7 +26,6 @@ import { useReportExplorer } from '../context/ReportExplorerContext';
 import { getCategoryMeta } from '../utils/categoryMeta';
 import { getReportCoordinates } from '../utils/nearbyReports';
 import { getReportTitleSuggestions } from '../utils/reportListing';
-
 import { mapHtml } from '../utils/mapHtml';
 
 const SIDEBAR_ITEMS = [
@@ -35,8 +34,6 @@ const SIDEBAR_ITEMS = [
     title: 'All Reports',
     subtitle: 'Search reports and view full details',
     icon: 'list-outline',
-    iconColor: '#007aff',
-    bgColor: '#eff6ff',
     route: '/reports',
   },
   {
@@ -44,8 +41,6 @@ const SIDEBAR_ITEMS = [
     title: 'Reports by Category',
     subtitle: 'Browse water issues by type',
     icon: 'grid-outline',
-    iconColor: '#007aff',
-    bgColor: '#eff6ff',
     route: '/reports-by-category',
   },
   {
@@ -53,8 +48,6 @@ const SIDEBAR_ITEMS = [
     title: 'Nearby Reports',
     subtitle: 'Find water issues around you',
     icon: 'navigate-circle-outline',
-    iconColor: '#14b8a6',
-    bgColor: '#eefbf7',
     route: '/nearby-reports',
   },
   {
@@ -62,8 +55,6 @@ const SIDEBAR_ITEMS = [
     title: 'Water Outages & Alerts',
     subtitle: 'Open issues and official information',
     icon: 'warning-outline',
-    iconColor: '#ff9500',
-    bgColor: '#fff8ed',
     route: '/alerts',
   },
   {
@@ -71,8 +62,6 @@ const SIDEBAR_ITEMS = [
     title: 'Emergency Helpline',
     subtitle: 'Emergency and municipal contacts',
     icon: 'call-outline',
-    iconColor: '#34c759',
-    bgColor: '#eefbf2',
     route: '/helpline',
   },
   {
@@ -80,9 +69,14 @@ const SIDEBAR_ITEMS = [
     title: 'About the Application',
     subtitle: 'App details, version, and mission',
     icon: 'information-circle-outline',
-    iconColor: '#5856d6',
-    bgColor: '#f5f3ff',
     route: '/about',
+  },
+  {
+    id: 'area_trends',
+    title: 'Areas Getting Worse',
+    subtitle: 'Weekly change in reports',
+    icon: 'trending-up-outline',
+    route: '/area-trends',
   },
 ];
 
@@ -104,23 +98,19 @@ export default function Index() {
   const [isLoading, setIsLoading] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
 
-  // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const blurTimeoutRef = useRef(null);
 
-  // Problem coordinates & 500m radius reporting state
   const [problemCoords, setProblemCoords] = useState(null);
   const [problemDistance, setProblemDistance] = useState(0);
   const [mapNotice, setMapNotice] = useState(null);
   const [isPickingOnMap, setIsPickingOnMap] = useState(false);
 
-  // Report modal & details state
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState(null);
 
-  // Sidebar state & animations
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const isOpeningRef = useRef(false);
   const pendingRouteRef = useRef(null);
@@ -148,7 +138,6 @@ export default function Index() {
     ]).start(() => {
       setIsSidebarOpen(false);
     });
-    // Fallback ensure modal state clears even if animation callback is delayed/cancelled
     setTimeout(() => {
       setIsSidebarOpen(false);
     }, 250);
@@ -158,7 +147,6 @@ export default function Index() {
     try {
       await Linking.openURL('https://github.com/kartikktripathi/AquaPulse');
     } catch (err) {
-      console.warn('Could not open GitHub link:', err);
     }
   };
 
@@ -200,7 +188,6 @@ export default function Index() {
       try {
         iframeRef.current?.contentWindow?.postMessage(messageObj, '*');
       } catch (err) {
-        console.warn('Error sending message to web iframe:', err);
       }
     } else {
       webViewRef.current?.injectJavaScript(`
@@ -285,7 +272,6 @@ export default function Index() {
       setProblemDistance(0);
       sendLocationToMap(coords.latitude, coords.longitude);
     } catch (error) {
-      console.warn('Error obtaining location:', error);
     } finally {
       setIsLoading(false);
     }
@@ -293,7 +279,6 @@ export default function Index() {
 
   const handleLocateMe = () => {
     if (userCoords) {
-      // Instantly center on user's known location without delay or spinner
       sendLocationToMap(userCoords.latitude, userCoords.longitude);
     } else {
       requestLocation();
@@ -390,7 +375,6 @@ export default function Index() {
     setIsSearchFocused(false);
     Keyboard.dismiss();
 
-    // Prioritize matching report title
     const queryLower = query.toLowerCase();
     const exactMatch = allReports.find(
       (r) => (r.name || '').trim().toLowerCase() === queryLower
@@ -402,6 +386,8 @@ export default function Index() {
       return;
     }
 
+    const searchController = new AbortController();
+    const searchTimer = setTimeout(() => searchController.abort(), 10000);
     try {
       setIsSearching(true);
       const res = await fetch(
@@ -409,6 +395,7 @@ export default function Index() {
           query
         )}&limit=1`,
         {
+          signal: searchController.signal,
           headers: {
             'User-Agent': 'AquaPulse-App',
           },
@@ -418,7 +405,6 @@ export default function Index() {
       if (results && results.length > 0) {
         const lat = parseFloat(results[0].lat);
         const lon = parseFloat(results[0].lon);
-        // Searching moves the viewport; only GPS sets the user's reporting radius.
         sendToMap({ type: 'PAN_TO_LOCATION', latitude: lat, longitude: lon });
       } else {
         setMapNotice({
@@ -427,8 +413,8 @@ export default function Index() {
         });
       }
     } catch (err) {
-      console.warn('Search geocoding error:', err);
     } finally {
+      clearTimeout(searchTimer);
       setIsSearching(false);
     }
   };
@@ -464,7 +450,6 @@ export default function Index() {
     <View style={styles.container}>
       <StatusBar style="dark" translucent backgroundColor="transparent" />
 
-      {/* Map layer - takes full screen */}
       <View style={styles.mapContainer}>
         {Platform.OS === 'web' ? (
           <iframe
@@ -507,7 +492,6 @@ export default function Index() {
         )}
       </View>
 
-      {/* Top Floating Search Bar & Notices */}
       <View
         pointerEvents="box-none"
         style={[
@@ -567,7 +551,6 @@ export default function Index() {
           </TouchableOpacity>
         </View>
 
-        {/* Report Title Suggestions Dropdown */}
         {showSuggestions && (
           <View style={styles.suggestionsContainer} pointerEvents="auto">
             <View style={styles.suggestionsHeader}>
@@ -680,7 +663,6 @@ export default function Index() {
           </View>
         )}
 
-        {/* Picking Location on Map Banner */}
         {isPickingOnMap && (
           <View style={styles.pickingBanner} pointerEvents="auto">
             <View style={styles.pickingBannerLeft}>
@@ -701,7 +683,6 @@ export default function Index() {
           </View>
         )}
 
-        {/* Map Notice Banner */}
         {mapNotice && !isPickingOnMap && (
           <View
             style={[
@@ -742,7 +723,6 @@ export default function Index() {
         )}
       </View>
 
-      {/* Floating Bottom Action Buttons (+ Report Button and Locate Button) */}
       <View
         pointerEvents="box-none"
         style={[
@@ -792,7 +772,6 @@ export default function Index() {
         </TouchableOpacity>
       </View>
 
-      {/* Water Problem Report Modal */}
       <ReportModal
         visible={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
@@ -816,7 +795,6 @@ export default function Index() {
         }}
       />
 
-      {/* Report Details Modal */}
       {selectedReport && (
         <ReportDetailsModal
           report={selectedReport}
@@ -826,7 +804,6 @@ export default function Index() {
         />
       )}
 
-      {/* Sidebar Modal Overlay */}
       <Modal
         visible={isSidebarOpen}
         transparent={true}
@@ -834,7 +811,6 @@ export default function Index() {
         onRequestClose={closeSidebar}
         statusBarTranslucent={true}>
         <View style={styles.modalRoot}>
-          {/* Backdrop */}
           <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]}>
             <TouchableOpacity
               activeOpacity={1}
@@ -844,102 +820,95 @@ export default function Index() {
             />
           </Animated.View>
 
-          {/* Drawer Panel */}
           <Animated.View
             style={[
               styles.sidebarDrawer,
               {
                 width: sidebarWidth,
                 transform: [{ translateX: slideAnim }],
-                paddingTop: insets.top + (Platform.OS === 'web' ? 20 : 12),
-                paddingBottom: insets.bottom + 16,
+                paddingTop: insets.top + 10,
+                paddingBottom: insets.bottom + 10,
               },
             ]}>
-            {/* Header */}
-            <View style={styles.sidebarHeader}>
-              <Text style={styles.sidebarTitle}>AquaPulse</Text>
-              <TouchableOpacity
-                onPress={closeSidebar}
-                activeOpacity={0.6}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                style={styles.closeButton}
-                accessibilityLabel="Close sidebar">
-                <Ionicons name="close" size={22} color="#333333" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Sidebar Content */}
-            <ScrollView contentContainerStyle={styles.sidebarContent} showsVerticalScrollIndicator={false}>
-              <View>
-                {/* Section Title */}
-                <Text style={styles.sidebarSectionTitle}>Menu</Text>
-
-                {/* Navigation List */}
-                <View style={styles.sidebarMenu}>
-                  {SIDEBAR_ITEMS.map((item, index) => {
-                    const isLast = index === SIDEBAR_ITEMS.length - 1;
-                    return (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={[
-                          styles.sidebarMenuItem,
-                          !isLast ? styles.sidebarMenuItemBorder : null,
-                        ]}
-                        activeOpacity={0.6}
-                        onPress={() => {
-                          pendingRouteRef.current = item.route;
-                          closeSidebar();
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={item.title}>
-                        <View
-                          style={[
-                            styles.sidebarMenuIconBubble,
-                            { backgroundColor: item.bgColor },
-                          ]}>
-                          <Ionicons
-                            name={item.icon}
-                            size={20}
-                            color={item.iconColor}
-                          />
-                        </View>
-                        <View style={styles.sidebarMenuTextWrap}>
-                          <Text style={styles.sidebarMenuItemTitle}>
-                            {item.title}
-                          </Text>
-                          <Text style={styles.sidebarMenuItemSubtitle}>
-                            {item.subtitle}
-                          </Text>
-                        </View>
-                        <Ionicons
-                          name="chevron-forward"
-                          size={17}
-                          color="#c7c7cc"
-                        />
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
-              <View style={styles.sidebarFooter}>
+            <View style={styles.sidebarPanel}>
+              <View style={styles.sidebarHeader}>
+                <Text style={styles.sidebarTitle}>AquaPulse</Text>
                 <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={styles.sidebarGithubLink}
-                  onPress={handleOpenGithub}
-                  accessibilityRole="link"
-                  accessibilityLabel="View AquaPulse on GitHub">
-                  <Ionicons name="logo-github" size={18} color="#24292f" />
-                  <Text style={styles.sidebarGithubText}>View on GitHub</Text>
-                  <Ionicons name="open-outline" size={13} color="#8e8e93" />
+                  onPress={closeSidebar}
+                  activeOpacity={0.6}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={styles.closeButton}
+                  accessibilityLabel="Close sidebar">
+                  <Ionicons name="chevron-back" size={18} color="#000000" />
                 </TouchableOpacity>
-
-                <Text style={styles.sidebarFooterVersion}>AquaPulse v1.0.0</Text>
-                <Text style={styles.sidebarFooterText}>
-                  City Water Management & Community Reporting
-                </Text>
               </View>
-            </ScrollView>
+
+              <ScrollView contentContainerStyle={styles.sidebarContent} showsVerticalScrollIndicator={false}>
+                <View>
+                  <Text style={styles.sidebarSectionTitle}>Menu</Text>
+
+                  <View style={styles.sidebarMenu}>
+                    {SIDEBAR_ITEMS.map((item, index) => {
+                      const isLast = index === SIDEBAR_ITEMS.length - 1;
+                      return (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={[
+                            styles.sidebarMenuItem,
+                            !isLast ? styles.sidebarMenuItemBorder : null,
+                          ]}
+                          activeOpacity={0.6}
+                          onPress={() => {
+                            pendingRouteRef.current = item.route;
+                            closeSidebar();
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={item.title}>
+                          <View style={styles.sidebarMenuIconBubble}>
+                            <Ionicons
+                              name={item.icon}
+                              size={22}
+                              color="#ffffff"
+                            />
+                          </View>
+                          <View style={styles.sidebarMenuTextWrap}>
+                            <Text style={styles.sidebarMenuItemTitle}>
+                              {item.title}
+                            </Text>
+                            <Text style={styles.sidebarMenuItemSubtitle}>
+                              {item.subtitle}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={17}
+                            color="#48484a"
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.sidebarFooter}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.sidebarGithubLink}
+                    onPress={handleOpenGithub}
+                    accessibilityRole="link"
+                    accessibilityLabel="View AquaPulse on GitHub">
+                    <Ionicons name="logo-github" size={18} color="#ffffff" />
+                    <Text style={styles.sidebarGithubText}>View on GitHub</Text>
+                    <Ionicons name="open-outline" size={13} color="#8e8e93" />
+                  </TouchableOpacity>
+
+                  <Text style={styles.sidebarFooterVersion}>AquaPulse v1.0.0</Text>
+                  <Text style={styles.sidebarFooterText}>
+                    City Water Management & Community Reporting
+                  </Text>
+                </View>
+              </ScrollView>
+            </View>
           </Animated.View>
         </View>
       </Modal>
@@ -965,8 +934,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-
-  /* Search Bar */
   reportControls: { marginTop: 8, width: '100%', maxWidth: 580, backgroundColor: '#fff', borderRadius: 18, overflow: 'hidden', elevation: 3 },
   reportActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderTopWidth: StyleSheet.hairlineWidth, borderColor: '#e9edf2' },
   reportAction: { minHeight: 40, minWidth: 44, justifyContent: 'center', alignItems: 'center' },
@@ -1018,8 +985,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 19,
   },
-
-  /* Search Suggestions Dropdown */
   suggestionsContainer: {
     width: '100%',
     maxWidth: 580,
@@ -1122,8 +1087,6 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     textAlign: 'center',
   },
-
-  /* Permission Banner */
   banner: {
     marginTop: 10,
     flexDirection: 'row',
@@ -1156,8 +1119,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-
-  /* Picking Banner */
   pickingBanner: {
     marginTop: 10,
     flexDirection: 'row',
@@ -1199,8 +1160,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-
-  /* Map Notice Banner */
   mapNoticeBanner: {
     marginTop: 8,
     flexDirection: 'row',
@@ -1231,8 +1190,6 @@ const styles = StyleSheet.create({
     color: '#333333',
     fontWeight: '500',
   },
-
-  /* Bottom Controls */
   bottomControls: {
     position: 'absolute',
     right: 16,
@@ -1288,8 +1245,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 5,
   },
-
-  /* Modal & Sidebar Drawer */
   modalRoot: {
     flex: 1,
     position: 'relative',
@@ -1304,13 +1259,21 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     height: '100%',
-    backgroundColor: '#ffffff',
+    backgroundColor: 'transparent',
+    paddingLeft: 10,
+  },
+  sidebarPanel: {
+    flex: 1,
+    backgroundColor: '#000000',
+    borderRadius: 28,
     paddingHorizontal: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 3, height: 0 },
+    paddingTop: 20,
+    paddingBottom: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 25,
+    shadowRadius: 12,
+    elevation: 8,
   },
   sidebarHeader: {
     flexDirection: 'row',
@@ -1318,18 +1281,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e5ea',
+    borderBottomColor: '#1f1f1f',
   },
   sidebarTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1c1c1e',
+    color: '#ffffff',
   },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f2f2f7',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1373,7 +1336,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   sidebarMenu: {
-    backgroundColor: '#ffffff',
+    backgroundColor: 'transparent',
   },
   sidebarMenuItem: {
     flexDirection: 'row',
@@ -1383,12 +1346,15 @@ const styles = StyleSheet.create({
   },
   sidebarMenuItemBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ebebf0',
+    borderBottomColor: '#1f1f1f',
   },
   sidebarMenuIconBubble: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -1399,7 +1365,7 @@ const styles = StyleSheet.create({
   sidebarMenuItemTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1c1c1e',
+    color: '#ffffff',
     marginBottom: 2,
   },
   sidebarMenuItemSubtitle: {
@@ -1409,7 +1375,7 @@ const styles = StyleSheet.create({
   sidebarFooter: {
     paddingTop: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e5e5ea',
+    borderTopColor: '#1f1f1f',
     alignItems: 'center',
   },
   sidebarGithubLink: {
@@ -1419,16 +1385,16 @@ const styles = StyleSheet.create({
     gap: 7,
     paddingVertical: 8,
     paddingHorizontal: 14,
-    backgroundColor: '#f6f8fa',
+    backgroundColor: '#111111',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#e1e4e8',
+    borderColor: '#2a2a2a',
     marginBottom: 12,
   },
   sidebarGithubText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#24292f',
+    color: '#ffffff',
   },
   sidebarFooterVersion: {
     fontSize: 12,
@@ -1438,7 +1404,7 @@ const styles = StyleSheet.create({
   },
   sidebarFooterText: {
     fontSize: 11,
-    color: '#aeaeb2',
+    color: '#636366',
     textAlign: 'center',
   },
 });

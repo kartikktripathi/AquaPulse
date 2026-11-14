@@ -27,11 +27,7 @@ import {
   getUiCategoryId,
 } from '../utils/categoryMeta';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const BASE_CHIPS = FILTER_CATEGORIES; // includes 'all' as first entry
-
-// ─── Main screen component ────────────────────────────────────────────────────
+const BASE_CHIPS = FILTER_CATEGORIES;
 
 export default function ReportsScreen({ categoryMode = false }) {
   const router = useRouter();
@@ -52,8 +48,6 @@ export default function ReportsScreen({ categoryMode = false }) {
 
   useFocusEffect(useCallback(() => { refreshReports(); }, [refreshReports]));
 
-  // ── Category chip counts ───────────────────────────────────────────────────
-
   const categoryCounts = useMemo(() => {
     const candidates = filterReports(reports, { ...filters, categories: [] }, now);
     const counts = { all: candidates.length };
@@ -64,7 +58,6 @@ export default function ReportsScreen({ categoryMode = false }) {
     return counts;
   }, [reports, filters, now]);
 
-  // Show the "Other" chip only when there are reports that need it
   const visibleChips = useMemo(() => {
     const hasOther = reports.some((r) => getUiCategoryId(r) === 'other') || filters.categories.includes('other');
     if (!hasOther) return BASE_CHIPS;
@@ -74,7 +67,6 @@ export default function ReportsScreen({ categoryMode = false }) {
     ];
   }, [reports, filters.categories]);
 
-  // Quick category chips use the same multi-selection as the filter sheet.
   const handleChipPress = useCallback((chipId) => {
     setFilters((old) => ({ ...old, categories: chipId === 'all' ? [] : old.categories.includes(chipId)
       ? old.categories.filter((id) => id !== chipId) : [...old.categories, chipId] }));
@@ -82,14 +74,10 @@ export default function ReportsScreen({ categoryMode = false }) {
     if (offset !== undefined) chipScrollRef.current?.scrollTo({ x: Math.max(0, offset - 16), animated: true });
   }, [setFilters]);
 
-  // ── Back navigation ────────────────────────────────────────────────────────
-
   const handleBack = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace('/');
   }, [router]);
-
-  // ── Render Helpers ─────────────────────────────────────────────────────────
 
   const renderHeader = () => (
     <View
@@ -213,8 +201,6 @@ export default function ReportsScreen({ categoryMode = false }) {
     );
   };
 
-  // ── Normal render ──────────────────────────────────────────────────────────
-
   return (
     <View style={styles.root}>
       {renderHeader()}
@@ -279,15 +265,11 @@ export default function ReportsScreen({ categoryMode = false }) {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#f2f2f7',
   },
-
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -325,8 +307,6 @@ const styles = StyleSheet.create({
     color: '#8e8e93',
     marginTop: 1,
   },
-
-  // Chip row
   chipRow: {
     backgroundColor: '#ffffff',
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -368,12 +348,8 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
   },
-
-  // Controls live inside the list so short screens and large text never compress them.
   list: { flex: 1 },
   controls: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 12, paddingBottom: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#e5eaf0' },
-
-  // List
   listContent: {
     width: '100%',
     maxWidth: 880,
@@ -382,7 +358,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 8,
   },
-
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, margin: 12, marginBottom: 6, backgroundColor: '#fff', borderWidth: 1, borderColor: '#dbe3ed', borderRadius: 14, paddingLeft: 12 },
   searchInput: { flex: 1, minWidth: 0, minHeight: 46, paddingVertical: 10, paddingRight: 8, fontSize: 14, color: '#243447' },
   clearSearch: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
@@ -393,8 +368,6 @@ const styles = StyleSheet.create({
   sortSelected: { backgroundColor: '#e7f1ff', borderColor: '#b2d2ff' },
   sortText: { color: '#627083', fontSize: 12, lineHeight: 18, fontWeight: '600' },
   resultCount: { paddingHorizontal: 16, color: '#627083', fontSize: 12 },
-
-  // Loading
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -406,8 +379,6 @@ const styles = StyleSheet.create({
     color: '#8e8e93',
     fontWeight: '500',
   },
-
-  // Empty / Error
   emptyContainer: {
     flex: 1,
     alignItems: 'center',

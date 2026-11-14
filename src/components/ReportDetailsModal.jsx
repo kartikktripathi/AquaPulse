@@ -17,6 +17,11 @@ import { addPhotosToReport } from '../services/reportService';
 import { calculateDistanceMeters } from '../utils/geo';
 import { getReportCoordinates } from '../utils/nearbyReports';
 import { getReportDetails } from '../utils/reportListing';
+import { splitPhotos } from '../utils/photoKinds';
+import { BeforeAfter } from './BeforeAfter';
+import { ConfirmReportButton } from './ConfirmReportButton';
+import { ResolveWithProof } from './ResolveWithProof';
+import { reportEvents } from '../utils/reportEvents';
 import ReportPhoto from './ReportPhoto';
 
 function Field({ label, children }) {
@@ -28,23 +33,28 @@ function Field({ label, children }) {
   );
 }
 
-// Mount this modal only for the selected report; closing preserves the parent list.
 export default function ReportDetailsModal({ report, userCoords, onClose, onPhotosUpdated }) {
   const insets = useSafeAreaInsets();
   const [photoIndex, setPhotoIndex] = useState(0);
-  const details = report ? getReportDetails(report) : null;
+  const [activeReport, setActiveReport] = useState(report);
+  const details = activeReport ? getReportDetails(activeReport) : null;
 
-  // Active photos list (starts with details.photos, updates as new photos are added)
-  const [photos, setPhotos] = useState(() => (details ? details.photos : []));
+  const [allPhotos, setAllPhotos] = useState(() => (details ? details.photos : []));
+  const [photos, setPhotos] = useState(() => (details ? splitPhotos(details.photos).before : []));
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [coords, setCoords] = useState(userCoords || null);
 
   useEffect(() => {
-    if (details) {
-      setPhotos(details.photos);
-      setPhotoIndex(0);
-      setUploadSuccess(false);
+    setActiveReport(report);
+    if (report) {
+      const d = getReportDetails(report);
+      if (d) {
+        setAllPhotos(d.photos);
+        setPhotos(splitPhotos(d.photos).before);
+        setPhotoIndex(0);
+        setUploadSuccess(false);
+      }
     }
   }, [report?.id]);
 
@@ -68,7 +78,6 @@ export default function ReportDetailsModal({ report, userCoords, onClose, onPhot
     return () => { active = false; };
   }, [userCoords]);
 
-  // Determine distance and 500m radius eligibility
   const targetCoords = details?.coordinates || getReportCoordinates(report);
   const activeUser = coords || userCoords;
   let distanceMeters = null;
@@ -103,18 +112,21 @@ export default function ReportDetailsModal({ report, userCoords, onClose, onPhot
 
       const res = await addPhotosToReport(details.id, payloads);
       if (res && res.success) {
-        setPhotos(res.photos);
-        setPhotoIndex(res.photos.length - 1);
+        setAllPhotos(res.photos);
+        const beforeList = splitPhotos(res.photos).before;
+        setPhotos(beforeList);
+        setPhotoIndex(Math.max(0, beforeList.length - 1));
         setUploadSuccess(true);
+        reportEvents.emit('report:photos-added', res.report);
         if (onPhotosUpdated) {
           onPhotosUpdated(res.report);
         }
         setTimeout(() => setUploadSuccess(false), 4000);
       } else {
-        Alert.alert('Upload Failed', res?.error || 'Could not upload photo.');
+        Alert.alert('Upload Failed', 'Could not upload photo. Please check your connection and try again.');
       }
     } catch (err) {
-      Alert.alert('Upload Failed', err?.message || 'Could not upload photo.');
+      Alert.alert('Upload Failed', 'Could not upload photo. Please check your connection and try again.');
     } finally {
       setIsUploading(false);
     }
@@ -161,6 +173,20 @@ export default function ReportDetailsModal({ report, userCoords, onClose, onPhot
     }
   };
 
+  const handleResolved = (updatedReport) => {
+    setActiveReport(updatedReport);
+    if (updatedReport) {
+      const d = getReportDetails(updatedReport);
+      if (d) {
+        setAllPhotos(d.photos);
+        setPhotos(splitPhotos(d.photos).before);
+      }
+    }
+    if (onPhotosUpdated) {
+      onPhotosUpdated(updatedReport);
+    }
+  };
+
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -200,6 +226,10 @@ export default function ReportDetailsModal({ report, userCoords, onClose, onPhot
                     </Text>
                   )}
                 </View>
+
+                <ConfirmReportButton reportId={details.id} />
+
+                <BeforeAfter photos={allPhotos} />
 
                 {/* Photo Viewer Carousel or Empty State */}
                 {photos.length > 0 ? (
@@ -306,6 +336,14 @@ export default function ReportDetailsModal({ report, userCoords, onClose, onPhot
                     </Text>
                   </View>
                 ) : null}
+
+                {isWithin500m && (activeReport?.status || report?.status) !== 'fixed' && (
+                  <ResolveWithProof
+                    report={activeReport || report}
+                    userCoords={coords || userCoords}
+                    onResolved={handleResolved}
+                  />
+                )}
 
                 <Field label="Description">{details.description}</Field>
                 <Field label="Address">{details.address || 'Address unavailable'}</Field>

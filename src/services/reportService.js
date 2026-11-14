@@ -17,9 +17,6 @@ function readableError(error) {
   return message;
 }
 
-/**
- * Convert base64 string to ArrayBuffer for reliable binary uploads across platforms.
- */
 function base64ToArrayBuffer(base64) {
   const binaryString = atob(base64);
   const len = binaryString.length;
@@ -30,9 +27,6 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-/**
- * Format a Supabase Report row into standard app report object.
- */
 export function formatSupabaseReport(row) {
   if (!row || typeof row !== 'object') return null;
   const coordinates = readCoordinates(row);
@@ -40,8 +34,15 @@ export function formatSupabaseReport(row) {
   try {
     parsedPhotos =
       typeof row.photos === 'string' ? JSON.parse(row.photos) : row.photos || [];
+    if (!Array.isArray(parsedPhotos)) {
+      parsedPhotos = typeof parsedPhotos === 'string' && parsedPhotos.trim().length > 0 ? [parsedPhotos.trim()] : [];
+    }
   } catch (e) {
-    parsedPhotos = [];
+    if (typeof row.photos === 'string' && row.photos.trim().length > 0) {
+      parsedPhotos = [row.photos.trim()];
+    } else {
+      parsedPhotos = [];
+    }
   }
 
   return {
@@ -75,37 +76,83 @@ export function formatSupabaseReport(row) {
   };
 }
 
-/**
- * Upload a photo (local file://, blob:, data URI, or object { uri, base64 }) to Supabase Storage bucket 'report-photos'.
- * Returns a public CDN URL. Upload failures stop submission so local-only photos
- * are never advertised as shared report evidence.
- */
-export async function uploadPhotoToSupabase(photoItem) {
+export async function uploadPhotoToSupabase(photoItem, bucket = 'report-photos', client = supabase) {
   if (!photoItem) return null;
 
   const rawUri = typeof photoItem === 'string' ? photoItem : photoItem.uri;
   const base64Data = typeof photoItem === 'object' ? photoItem.base64 : null;
   const explicitMime = typeof photoItem === 'object' ? photoItem.mimeType : null;
 
-  // If already remote HTTP/HTTPS URL, return as-is
   if (rawUri && (rawUri.startsWith('http://') || rawUri.startsWith('https://'))) {
     return rawUri;
   }
 
   try {
-    const ext = rawUri ? rawUri.split('.').pop()?.split('?')[0] : 'jpg';
-    const cleanExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(
-      ext?.toLowerCase()
-    )
-      ? ext.toLowerCase()
-      : 'jpg';
+    const rawClean = rawUri ? rawUri.split('?')[0].split('#')[0] : '';
+    let cleanExt = 'jpg';
+    let contentType = explicitMime || 'image/jpeg';
+
+    if (rawUri && rawUri.startsWith('data:')) {
+      if (!rawUri.startsWith('data:image/')) {
+        throw new Error('Only JPG, PNG and WebP images are supported.');
+      }
+      const match = rawUri.match(/^data:(image\/[a-zA-Z0-9.+-]+);/);
+      if (match) {
+        const mime = match[1].toLowerCase();
+        if (mime === 'image/png' || mime === 'image/x-png') {
+          cleanExt = 'png';
+          contentType = 'image/png';
+        } else if (mime === 'image/webp') {
+          cleanExt = 'webp';
+          contentType = 'image/webp';
+        } else if (mime.startsWith('image/')) {
+          cleanExt = 'jpg';
+          contentType = 'image/jpeg';
+        } else {
+          throw new Error('Only JPG, PNG and WebP images are supported.');
+        }
+      }
+    } else if (explicitMime) {
+      const mime = explicitMime.toLowerCase();
+      if (!mime.startsWith('image/')) {
+        throw new Error('Only JPG, PNG and WebP images are supported.');
+      }
+      if (mime === 'image/png' || mime === 'image/x-png') {
+        cleanExt = 'png';
+        contentType = 'image/png';
+      } else if (mime === 'image/webp') {
+        cleanExt = 'webp';
+        contentType = 'image/webp';
+      } else {
+        cleanExt = 'jpg';
+        contentType = 'image/jpeg';
+      }
+    } else if (rawClean && !rawClean.startsWith('blob:') && !rawClean.startsWith('content:')) {
+      const lastSegment = rawClean.split('/').pop() || '';
+      if (lastSegment.includes('.')) {
+        const fileExt = (lastSegment.split('.').pop() || '').toLowerCase();
+        const validImages = ['jpg', 'jpeg', 'png', 'webp', 'avif', 'heic', 'heif', 'gif', 'bmp', 'tiff', 'jfif'];
+        if (validImages.includes(fileExt)) {
+          if (fileExt === 'png') {
+            cleanExt = 'png';
+            contentType = 'image/png';
+          } else if (fileExt === 'webp') {
+            cleanExt = 'webp';
+            contentType = 'image/webp';
+          } else {
+            cleanExt = 'jpg';
+            contentType = 'image/jpeg';
+          }
+        } else if (fileExt) {
+          throw new Error('Only JPG, PNG and WebP images are supported.');
+        }
+      }
+    }
 
     const fileName = `report_${Date.now()}_${Math.random()
       .toString(36)
       .substring(2, 8)}.${cleanExt}`;
     const filePath = `${fileName}`;
-    const contentType =
-      explicitMime || rawUri?.match(/^data:(image\/[^;]+);base64,/)?.[1] || `image/${cleanExt === 'jpg' ? 'jpeg' : cleanExt}`;
 
     let arrayBuffer = null;
 
@@ -130,45 +177,53 @@ export async function uploadPhotoToSupabase(photoItem) {
       throw new Error('This photo could not be read. Please choose it again.');
     }
 
-    // 1. Try uploading using anon client
-    const { error } = await requireSupabase().storage
-      .from('report-photos')
+    if (arrayBuffer.byteLength > 5 * 1024 * 1024) {
+      throw new Error('Photo must be smaller than 5 MB.');
+    }
+
+    const activeClient = client || requireSupabase();
+    const { error } = await activeClient.storage
+      .from(bucket)
       .upload(filePath, arrayBuffer, {
         contentType,
         upsert: false,
       });
 
     if (error) {
-      throw new Error(`Photo upload failed: ${readableError(error)}`);
+      throw new Error('Could not upload photo. Please try again.');
     }
 
-    const { data: publicData } = supabase.storage
-      .from('report-photos')
+    const { data: publicData } = activeClient.storage
+      .from(bucket)
       .getPublicUrl(filePath);
 
-    console.log('Photo uploaded to Supabase Storage CDN:', publicData?.publicUrl);
     if (!publicData?.publicUrl) throw new Error('Photo upload did not return a public URL.');
     return publicData.publicUrl;
   } catch (err) {
-    console.error('Error uploading photo to Supabase storage:', err);
     throw err;
   }
 }
 
-/**
- * Save a newly submitted water problem report into Supabase.
- */
-export async function saveReportToDatabase(reportData) {
+export async function saveReportToDatabase(reportData, client = supabase) {
   try {
-    requireSupabase();
+    const activeClient = client || requireSupabase();
     const coordinates = readCoordinates(reportData.coordinates) || readCoordinates(reportData);
     if (!coordinates) throw new Error('A valid report location is required. Enable location and choose the problem pin before submitting.');
-    // 1. Upload any local photos to Supabase Storage
+    if (
+      !Number.isFinite(coordinates.latitude) ||
+      !Number.isFinite(coordinates.longitude) ||
+      coordinates.latitude < -90 ||
+      coordinates.latitude > 90 ||
+      coordinates.longitude < -180 ||
+      coordinates.longitude > 180
+    ) {
+      throw new Error('Valid coordinates within standard ranges (-90 to 90, -180 to 180) are required.');
+    }
     let uploadedPhotos = [];
-    if (Array.isArray(reportData.photos) && reportData.photos.length > 0) {
-      console.log(`Uploading ${reportData.photos.length} photo(s) to Supabase Storage...`);
+    const photoList = Array.isArray(reportData.photos) ? reportData.photos.slice(0, 5) : [];
+    if (photoList.length > 0) {
       uploadedPhotos = await Promise.all(
-        reportData.photos.map((item) => uploadPhotoToSupabase(item))
+        photoList.map((item) => uploadPhotoToSupabase(item, 'report-photos', activeClient))
       );
     }
 
@@ -176,36 +231,35 @@ export async function saveReportToDatabase(reportData) {
       reportData.id ||
       `rep_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    // 2. Prepare payload matching Supabase 'Report' table schema
     const payload = {
       id: reportId,
-      name: (reportData.name || '').trim(),
+      name: (reportData.name || '').trim().slice(0, 120),
       categoryId: reportData.categoryId || 'other',
       categoryLabel: reportData.categoryLabel || reportData.category || 'Other',
       addressLine1:
-        reportData.address?.line1 || reportData.addressLine1 || 'Unknown Street',
-      addressLine2: reportData.address?.line2 || reportData.addressLine2 || null,
-      landmark: reportData.address?.landmark || reportData.landmark || '',
-      description: reportData.description || '',
-      photos: JSON.stringify(uploadedPhotos),
+        (reportData.address?.line1 || reportData.addressLine1 || 'Unknown Street').trim().slice(0, 200),
+      addressLine2: (reportData.address?.line2 || reportData.addressLine2 || '').trim().slice(0, 200) || null,
+      landmark: (reportData.address?.landmark || reportData.landmark || '').trim().slice(0, 200),
+      description: (reportData.description || '').trim().slice(0, 2000),
+      photos: JSON.stringify(uploadedPhotos.filter(Boolean)),
       status: reportData.status || 'reported',
       latitude: coordinates.latitude,
       longitude: coordinates.longitude,
       userLatitude:
-        reportData.userCoordinates?.latitude !== undefined
+        reportData.userCoordinates?.latitude !== undefined && Number.isFinite(Number(reportData.userCoordinates.latitude))
           ? parseFloat(reportData.userCoordinates.latitude)
-          : reportData.userLatitude !== undefined
+          : reportData.userLatitude !== undefined && Number.isFinite(Number(reportData.userLatitude))
           ? parseFloat(reportData.userLatitude)
           : null,
       userLongitude:
-        reportData.userCoordinates?.longitude !== undefined
+        reportData.userCoordinates?.longitude !== undefined && Number.isFinite(Number(reportData.userCoordinates.longitude))
           ? parseFloat(reportData.userCoordinates.longitude)
-          : reportData.userLongitude !== undefined
+          : reportData.userLongitude !== undefined && Number.isFinite(Number(reportData.userLongitude))
           ? parseFloat(reportData.userLongitude)
           : null,
-      distanceFromUser: parseFloat(
+      distanceFromUser: Math.max(0, parseFloat(
         reportData.distanceFromUser ?? reportData.distance ?? 0
-      ),
+      ) || 0),
       waterDepth: reportData.waterDepth || null,
       peopleAffected: reportData.peopleAffected || null,
       roadBlocked: reportData.roadBlocked || null,
@@ -214,8 +268,7 @@ export async function saveReportToDatabase(reportData) {
       updatedAt: new Date().toISOString(),
     };
 
-    // 3. Direct insert into Supabase 'Report' table
-    const { data, error } = await supabase
+    const { data, error } = await activeClient
       .from('Report')
       .insert([payload])
       .select()
@@ -227,14 +280,8 @@ export async function saveReportToDatabase(reportData) {
 
     const formatted = formatSupabaseReport(data);
     localReportsCache.unshift(formatted);
-    console.log('Report successfully saved to Supabase Report table! ID:', formatted.id);
     return { success: true, report: formatted };
   } catch (err) {
-    console.error(
-      'Could not write to Supabase Report table:',
-      err.message
-    );
-
     return {
       success: false,
       error: readableError(err),
@@ -242,9 +289,6 @@ export async function saveReportToDatabase(reportData) {
   }
 }
 
-/**
- * Append new photos to an existing report in Supabase and update local cache.
- */
 export async function addPhotosToReport(reportId, newPhotos) {
   try {
     requireSupabase();
@@ -253,7 +297,6 @@ export async function addPhotosToReport(reportId, newPhotos) {
       return { success: true, photos: [] };
     }
 
-    // 1. Upload new photos to Supabase Storage
     const uploadedUrls = await Promise.all(
       newPhotos.map((item) => uploadPhotoToSupabase(item))
     );
@@ -262,7 +305,6 @@ export async function addPhotosToReport(reportId, newPhotos) {
       throw new Error('No valid photos could be uploaded.');
     }
 
-    // 2. Fetch current photos for this report
     const { data: existing, error: fetchErr } = await supabase
       .from('Report')
       .select('*')
@@ -284,7 +326,6 @@ export async function addPhotosToReport(reportId, newPhotos) {
       currentPhotos = [];
     }
 
-    // Combine unique photo URLs
     const combinedPhotos = [...currentPhotos];
     for (const url of validUrls) {
       if (!combinedPhotos.includes(url)) {
@@ -292,7 +333,6 @@ export async function addPhotosToReport(reportId, newPhotos) {
       }
     }
 
-    // 3. Update Supabase Report row
     const { data: updatedRow, error: updateErr } = await supabase
       .from('Report')
       .update({
@@ -319,7 +359,6 @@ export async function addPhotosToReport(reportId, newPhotos) {
 
     return { success: true, report: formatted, photos: combinedPhotos };
   } catch (err) {
-    console.error('Error adding photos to report:', err);
     return {
       success: false,
       error: readableError(err),
@@ -327,22 +366,19 @@ export async function addPhotosToReport(reportId, newPhotos) {
   }
 }
 
-/**
- * Fetch all reports from Supabase.
- */
 export async function getReportsFromDatabase() {
   const snapshot = await getReportsSnapshot();
   if (snapshot.source === 'unavailable') throw new Error(snapshot.error);
   return snapshot.reports;
 }
 
-/** Page through shared reports so nearby filtering is not limited to the first page. */
 export async function getReportsSnapshot({ signal } = {}) {
   try {
     const client = requireSupabase();
     const reports = [];
     const pageSize = 500;
-    for (let offset = 0; ; offset += pageSize) {
+    const maxPages = 10;
+    for (let offset = 0, page = 0; page < maxPages; offset += pageSize, page += 1) {
       if (signal?.aborted) throw new Error('Request cancelled.');
       let query = client.from('Report').select('*')
         .order('createdAt', { ascending: false }).order('id', { ascending: false })
