@@ -88,12 +88,17 @@ AquaPulse/
 │   │   ├── reports.jsx       # All reports searchable list & filter view
 │   │   ├── nearby-reports.jsx# Geolocation radius discovery (500m - 10km)
 │   │   ├── reports-by-category.jsx # Browse issues grouped by category
+│   │   ├── area-trends.jsx   # Weekly report trends & deteriorating areas dashboard
 │   │   ├── alerts.jsx        # Community alerts & high-severity water outages
 │   │   ├── helpline.jsx      # Emergency contact directory (ERSS 112, PMC)
 │   │   └── about.jsx         # Mission, usage instructions, and version info
 │   ├── components/           # Reusable UI components
 │   │   ├── ReportModal.jsx   # Form modal to draft and submit new reports
 │   │   ├── ReportDetailsModal.jsx # Full-detail viewer & 500m photo contributor
+│   │   ├── ResolveWithProof.jsx   # Modal for residents to attach after-repair proof
+│   │   ├── ConfirmReportButton.jsx# Upvote and community verification button
+│   │   ├── DuplicateWarning.jsx   # Proximity notification for existing nearby issues
+│   │   ├── BeforeAfter.jsx   # Side-by-side comparison for resolved issues
 │   │   ├── ReportFilters.jsx # Filter pills for categories, dates, and severity
 │   │   ├── ReportsScreen.jsx # Shared list layout for report explorer screens
 │   │   ├── ReportCard.jsx    # Report preview card used in lists
@@ -102,8 +107,10 @@ AquaPulse/
 │   ├── context/
 │   │   └── ReportExplorerContext.jsx # Global state for cached reports & filters
 │   ├── services/
-│   │   ├── reportService.js  # Supabase database queries, inserts & photo uploads
-│   │   └── nearbyLocation.js # High-accuracy GPS location requester
+│   │   ├── reportService.js      # Supabase database queries, inserts & photo uploads
+│   │   ├── confirmationService.js# Device-based verification and confirmations
+│   │   ├── resolutionService.js  # Resolution status and proof upload service
+│   │   └── nearbyLocation.js     # High-accuracy GPS location requester
 │   ├── utils/
 │   │   ├── mapHtml.js        # Leaflet HTML/JS bundle with custom teardrop pins
 │   │   ├── geo.js            # Haversine distance & Nominatim reverse geocoding
@@ -112,7 +119,13 @@ AquaPulse/
 │   │   ├── reportFilters.js  # Multidimensional report filtering logic
 │   │   ├── categoryMeta.js   # Color schemes, icons, and category label normalizers
 │   │   ├── communityAlerts.js# Outage modes and urgent issue filters
-│   │   └── severity.js       # Severity calculator from depth, people & road impact
+│   │   ├── areaTrends.js     # Neighborhood week-over-week trends calculation
+│   │   ├── severity.js       # Severity calculator from depth, people & road impact
+│   │   ├── spamGuard.js      # Frequency and cooldown guard against report flooding
+│   │   ├── submitChecks.js   # Validation checks for new problem submissions
+│   │   ├── reportEvents.js   # Lightweight pub/sub event bus for refreshing views
+│   │   ├── photoKinds.js     # Evidence classification constants
+│   │   └── deviceId.js       # Anonymous persistent device identifier for anti-spam
 │   ├── data/
 │   │   └── helpContacts.js   # Official emergency & municipal helpline directory
 │   └── lib/
