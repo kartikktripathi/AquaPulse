@@ -21,6 +21,10 @@ import { FILTER_CATEGORIES } from '../utils/categoryMeta';
 import { saveReportToDatabase } from '../services/reportService';
 import { calculateDistanceMeters, reverseGeocode } from '../utils/geo';
 import { readCoordinates } from '../utils/nearbyReports';
+import { useReportExplorer } from '../context/ReportExplorerContext';
+import { runSubmitChecks, spamStep, duplicateStep } from '../utils/submitChecks';
+import { DuplicateWarning } from './DuplicateWarning';
+import { reportEvents } from '../utils/reportEvents';
 import {
   DEPTH_OPTIONS,
   PEOPLE_OPTIONS,
@@ -46,7 +50,6 @@ export default function ReportModal({
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // Address fields
   const [addressLine1, setAddressLine1] = useState('');
   const [addressLine2, setAddressLine2] = useState('');
   const [landmark, setLandmark] = useState('');
@@ -63,8 +66,11 @@ export default function ReportModal({
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [errors, setErrors] = useState({});
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const { reports, now } = useReportExplorer();
+  const [duplicateMatches, setDuplicateMatches] = useState([]);
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
+  const [pendingReportData, setPendingReportData] = useState(null);
 
-  // Determine active coordinates and calculate distance from user
   const activeProblemCoords = problemCoords || userCoords;
   const distance =
     userCoords && activeProblemCoords
@@ -76,9 +82,9 @@ export default function ReportModal({
         )
       : 0;
 
-  const isWithin500m = distance <= 500;
+  const hasUserLocation = !!readCoordinates(userCoords);
+  const isWithin500m = hasUserLocation && distance <= 500;
 
-  // Auto-fill address when modal opens or coordinates update
   useEffect(() => {
     let isCancelled = false;
 
@@ -148,6 +154,74 @@ export default function ReportModal({
     setSubmitError(null);
     setErrors({});
     setIsSubmitted(false);
+    setShowDuplicateWarning(false);
+    setDuplicateMatches([]);
+    setPendingReportData(null);
+  };
+
+  const doSubmit = async (dataToSubmit, skipDuplicateCheck = false) => {
+    const steps = skipDuplicateCheck ? [spamStep] : [spamStep, duplicateStep];
+    const checkResult = await runSubmitChecks(
+      {
+        reports,
+        coords: userCoords || activeProblemCoords,
+        categoryId: selectedCategory?.id,
+        now,
+      },
+      steps
+    );
+
+    if (!checkResult.ok) {
+      if (checkResult.kind === 'spam') {
+        setSubmitError(checkResult.message);
+        setIsSubmittingReport(false);
+        return;
+      }
+      if (checkResult.kind === 'duplicate') {
+        setDuplicateMatches(checkResult.matches || []);
+        setShowDuplicateWarning(true);
+        setIsSubmittingReport(false);
+        return;
+      }
+    }
+
+    try {
+      const result = await saveReportToDatabase(dataToSubmit);
+      if (!result.success) {
+        setSubmitError(
+          result.error === 'Failed to fetch'
+            ? 'Submission failed due to a network error. Tap Try again.'
+            : result.error || 'Submission failed due to a network error. Tap Try again.'
+        );
+        setIsSubmittingReport(false);
+        return;
+      }
+      reportEvents.emit('report:created', result.report);
+      onSubmit?.(result.report);
+    } catch (saveError) {
+      setSubmitError('Submission failed due to a network error. Tap Try again.');
+      setIsSubmittingReport(false);
+      return;
+    }
+    setIsSubmittingReport(false);
+    setIsSubmitted(true);
+  };
+
+  const handleContinueDuplicate = async () => {
+    setShowDuplicateWarning(false);
+    if (pendingReportData) {
+      setIsSubmittingReport(true);
+      await doSubmit(pendingReportData, true);
+    }
+  };
+
+  const handleConfirmExisting = () => {
+    setShowDuplicateWarning(false);
+    setIsSubmitted(true);
+  };
+
+  const handleCancelDuplicate = () => {
+    setShowDuplicateWarning(false);
   };
 
   const handleClose = () => {
@@ -189,11 +263,12 @@ export default function ReportModal({
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        const dataUri = `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`;
+        const dataUri = asset.base64
+          ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
+          : asset.uri;
         setPhotos((prev) => [...prev, dataUri]);
       }
     } catch (err) {
-      console.warn('Camera capture error:', err);
       Alert.alert('Camera Error', 'Could not access the camera on this device.');
     } finally {
       setIsProcessingPhotos(false);
@@ -221,7 +296,10 @@ export default function ReportModal({
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const pickedUris = result.assets.map(
-          (asset) => `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
+          (asset) =>
+            asset.base64
+              ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
+              : asset.uri
         );
         setPhotos((prev) => {
           const combined = [...prev];
@@ -234,7 +312,6 @@ export default function ReportModal({
         });
       }
     } catch (err) {
-      console.warn('Image picker error:', err);
       Alert.alert('Photo Error', 'Could not access photo library on this device.');
     } finally {
       setIsProcessingPhotos(false);
@@ -290,7 +367,6 @@ export default function ReportModal({
       newErrors.roadBlocked = 'Please indicate whether the road is blocked.';
     }
 
-    // 500m Radius Circle Constraint
     if (!readCoordinates(activeProblemCoords) || !readCoordinates(userCoords)) {
       newErrors.radius = 'Enable location and choose a problem location before submitting.';
     } else if (distance > 500) {
@@ -324,32 +400,14 @@ export default function ReportModal({
       severity,
     };
 
+    setPendingReportData(reportData);
     setSubmitError(null);
     setIsSubmittingReport(true);
-    try {
-      const result = await saveReportToDatabase(reportData);
-      if (!result.success) {
-        setSubmitError(
-          result.error === 'Failed to fetch'
-            ? 'Submission failed due to a network error. Tap Try again.'
-            : result.error || 'Submission failed due to a network error. Tap Try again.'
-        );
-        setIsSubmittingReport(false);
-        return;
-      }
-      onSubmit?.(result.report);
-    } catch (saveError) {
-      console.warn('Database save warning:', saveError);
-      setSubmitError('Submission failed due to a network error. Tap Try again.');
-      setIsSubmittingReport(false);
-      return;
-    }
-    setIsSubmittingReport(false);
-
-    setIsSubmitted(true);
+    await doSubmit(reportData, false);
   };
 
   return (
+    <>
     <Modal
       visible={visible}
       animationType="slide"
@@ -358,7 +416,7 @@ export default function ReportModal({
       statusBarTranslucent={true}>
       <View style={styles.modalOverlay}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardContainer}>
           <View
             style={[
@@ -368,7 +426,6 @@ export default function ReportModal({
                 paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : 16,
               },
             ]}>
-            {/* Header */}
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <View style={styles.headerIconBubble}>
@@ -387,7 +444,6 @@ export default function ReportModal({
             </View>
 
             {isSubmitted ? (
-              /* Success Screen */
               <ScrollView
                 style={styles.formScroll}
                 contentContainerStyle={styles.successScrollContent}
@@ -478,13 +534,11 @@ export default function ReportModal({
                 </TouchableOpacity>
               </ScrollView>
             ) : (
-              /* Form Body */
               <ScrollView
                 style={styles.formScroll}
                 contentContainerStyle={styles.formContent}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}>
-                {/* 500m Radius Circle Status Card */}
                 <View
                   style={[
                     styles.radiusCard,
@@ -499,15 +553,19 @@ export default function ReportModal({
                     <Text
                       style={[
                         styles.radiusStatusTitle,
-                        { color: isWithin500m ? '#248a3d' : '#c92a2a' },
+                        { color: !hasUserLocation ? '#c92a2a' : isWithin500m ? '#248a3d' : '#c92a2a' },
                       ]}>
-                      {isWithin500m
+                      {!hasUserLocation
+                        ? 'Location Required'
+                        : isWithin500m
                         ? `Within 500m Radius (${distance}m away)`
                         : `Outside 500m Radius (${distance}m away)`}
                     </Text>
                   </View>
                   <Text style={styles.radiusDescription}>
-                    {isWithin500m
+                    {!hasUserLocation
+                      ? 'Turn on device location to report water problems within 500m of where you are.'
+                      : isWithin500m
                       ? 'The selected problem location is within your 500m reporting zone.'
                       : 'You are only allowed to report water problems within 500m of your current location.'}
                   </Text>
@@ -522,9 +580,12 @@ export default function ReportModal({
                       activeOpacity={0.7}
                       style={styles.radiusActionBtn}
                       onPress={handleResetToUserLocation}>
-                      <Ionicons name="navigate-outline" size={15} color="#007aff" />
-                      <Text style={styles.radiusActionBtnText}>
-                        Use My Location (0m)
+                      <Ionicons name="navigate-outline" size={14} color="#007aff" />
+                      <Text
+                        style={styles.radiusActionBtnText}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit>
+                        Use My Location
                       </Text>
                     </TouchableOpacity>
                     {onAdjustOnMap && (
@@ -532,8 +593,13 @@ export default function ReportModal({
                         activeOpacity={0.7}
                         style={styles.radiusActionBtn}
                         onPress={handleAdjustOnMap}>
-                        <Ionicons name="map-outline" size={15} color="#007aff" />
-                        <Text style={styles.radiusActionBtnText}>Adjust on Map</Text>
+                        <Ionicons name="map-outline" size={14} color="#007aff" />
+                        <Text
+                          style={styles.radiusActionBtnText}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit>
+                          Adjust on Map
+                        </Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -546,7 +612,6 @@ export default function ReportModal({
                   </View>
                 )}
 
-                {/* 1. Problem Name Field */}
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>
                     Problem Name <Text style={styles.requiredMark}>*</Text>
@@ -574,14 +639,12 @@ export default function ReportModal({
                   )}
                 </View>
 
-                {/* 2. Category Dropdown Field */}
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>
                     Category of Water Problem{' '}
                     <Text style={styles.requiredMark}>*</Text>
                   </Text>
 
-                  {/* Dropdown trigger box */}
                   <TouchableOpacity
                     activeOpacity={0.8}
                     style={[
@@ -623,7 +686,6 @@ export default function ReportModal({
                     </View>
                   )}
 
-                  {/* Dropdown Options List */}
                   {isDropdownOpen && (
                     <View style={styles.dropdownMenu}>
                       {FORM_CATEGORIES.map((item) => {
@@ -782,12 +844,11 @@ export default function ReportModal({
                   );
                 })()}
 
-                {/* 3. Address Section */}
                 <View style={styles.addressSectionBox}>
                   <View style={styles.addressSectionHeader}>
                     <View style={styles.addressHeaderLeft}>
-                      <Ionicons name="location" size={18} color="#007aff" />
-                      <Text style={styles.addressSectionTitle}>
+                      <Ionicons name="location" size={17} color="#007aff" />
+                      <Text style={styles.addressSectionTitle} numberOfLines={1}>
                         Problem Address Details
                       </Text>
                     </View>
@@ -808,7 +869,6 @@ export default function ReportModal({
                     )}
                   </View>
 
-                  {/* Address Line 1 */}
                   <View style={styles.fieldGroup}>
                     <Text style={styles.fieldLabel}>
                       Address Line 1 <Text style={styles.requiredMark}>*</Text>
@@ -839,7 +899,6 @@ export default function ReportModal({
                     )}
                   </View>
 
-                  {/* Address Line 2 */}
                   <View style={styles.fieldGroup}>
                     <Text style={styles.fieldLabel}>Address Line 2</Text>
                     <TextInput
@@ -851,7 +910,6 @@ export default function ReportModal({
                     />
                   </View>
 
-                  {/* Landmark */}
                   <View style={styles.fieldGroupLast}>
                     <Text style={styles.fieldLabel}>
                       Landmark <Text style={styles.requiredMark}>*</Text>
@@ -883,7 +941,6 @@ export default function ReportModal({
                   </View>
                 </View>
 
-                {/* 4. Description Paragraph Field */}
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>
                     Description of the Problem{' '}
@@ -918,7 +975,6 @@ export default function ReportModal({
                   )}
                 </View>
 
-                {/* 5. Photos of the Problem */}
                 <View style={styles.fieldGroup}>
                   <View style={styles.fieldLabelRow}>
                     <Text style={styles.fieldLabel}>Photos of the Problem</Text>
@@ -958,7 +1014,6 @@ export default function ReportModal({
                     </View>
                   )}
 
-                  {/* Thumbnail gallery preview */}
                   {photos.length > 0 ? (
                     <ScrollView
                       horizontal
@@ -998,7 +1053,6 @@ export default function ReportModal({
                   </View>
                 )}
 
-                {/* Submit button */}
                 <TouchableOpacity
                   activeOpacity={0.8}
                   style={[
@@ -1036,6 +1090,14 @@ export default function ReportModal({
         </KeyboardAvoidingView>
       </View>
     </Modal>
+    <DuplicateWarning
+      visible={showDuplicateWarning}
+      matches={duplicateMatches}
+      onConfirmExisting={handleConfirmExisting}
+      onContinue={handleContinueDuplicate}
+      onCancel={handleCancelDuplicate}
+    />
+  </>
   );
 }
 
@@ -1068,8 +1130,6 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     overflow: 'hidden',
   },
-
-  /* Header */
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1105,8 +1165,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
-  /* Form Scroll Area */
   formScroll: {
     flex: 1,
   },
@@ -1115,8 +1173,6 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 36,
   },
-
-  /* 500m Radius Status Card */
   radiusCard: {
     borderWidth: 1.5,
     borderRadius: 12,
@@ -1153,24 +1209,30 @@ const styles = StyleSheet.create({
   },
   radiusActionsRow: {
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
+    gap: 8,
     marginTop: 10,
+    width: '100%',
   },
   radiusActionBtn: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#b9dbff',
     borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
     gap: 5,
   },
   radiusActionBtnText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#007aff',
+    textAlign: 'center',
   },
   radiusErrorBanner: {
     flexDirection: 'row',
@@ -1189,8 +1251,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
-
-  /* Address Section Box */
   addressSectionBox: {
     backgroundColor: '#f8f9fa',
     borderRadius: 12,
@@ -1212,22 +1272,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flex: 1,
+    marginRight: 8,
   },
   addressSectionTitle: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '700',
     color: '#1c1c1e',
+    flexShrink: 1,
   },
   autoDetectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#eff6ff',
-    paddingVertical: 4,
+    paddingVertical: 5,
     paddingHorizontal: 8,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#bfdbfe',
+    flexShrink: 0,
   },
   autoDetectBtnText: {
     fontSize: 11,
@@ -1243,8 +1307,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#007aff',
   },
-
-  /* Form Groups */
   fieldGroup: {
     marginBottom: 16,
   },
@@ -1278,8 +1340,6 @@ const styles = StyleSheet.create({
   requiredMark: {
     color: '#ff3b30',
   },
-
-  /* Text Inputs */
   textInput: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
@@ -1316,8 +1376,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#ff3b30',
   },
-
-  /* Dropdown */
   dropdownTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1392,8 +1450,6 @@ const styles = StyleSheet.create({
   otherInputWrapper: {
     marginTop: 6,
   },
-
-  /* Photos Section */
   photoActionsRow: {
     flexDirection: 'row',
     gap: 10,
@@ -1401,6 +1457,7 @@ const styles = StyleSheet.create({
   },
   photoActionButton: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1410,6 +1467,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     height: 44,
     gap: 6,
+    paddingHorizontal: 6,
   },
   photoActionButtonText: {
     fontSize: 13,
@@ -1526,8 +1584,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-
-  /* Buttons */
   primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1562,8 +1618,6 @@ const styles = StyleSheet.create({
     color: '#8e8e93',
     fontWeight: '500',
   },
-
-  /* Success Screen */
   successScrollContent: {
     paddingHorizontal: 24,
     paddingVertical: 32,

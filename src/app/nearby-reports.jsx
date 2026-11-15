@@ -302,7 +302,7 @@ export default function NearbyReports() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F2F2F7' },
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12, backgroundColor: '#FFFFFF' },
-  back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: '#F2F2F7' },
+  back: { minWidth: 36, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   headerText: { flex: 1, minWidth: 0 },
   title: { fontSize: 21, fontWeight: '700', color: '#1C1C1E' },
   subtitle: { fontSize: 12, lineHeight: 18, color: '#636366', marginTop: 3 },

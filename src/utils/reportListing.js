@@ -54,7 +54,6 @@ export function searchAndSortReports(reports, query = '', sort = 'newest') {
       if (severityDifference) return severityDifference;
     }
     const aTime = timestamp(a.createdAt), bTime = timestamp(b.createdAt);
-    // Unknown dates always go last, including when sorting oldest first.
     if (!Number.isFinite(aTime)) return Number.isFinite(bTime) ? 1 : 0;
     if (!Number.isFinite(bTime)) return -1;
     return sort === 'oldest' ? aTime - bTime : bTime - aTime;

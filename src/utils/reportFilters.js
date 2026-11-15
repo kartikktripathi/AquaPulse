@@ -24,7 +24,6 @@ export function normalizeReportStatus(value) {
   return status === 'resolved' ? 'fixed' : status === 'verified' ? 'review' : status;
 }
 
-// Parse a calendar date in the device's timezone, avoiding UTC-only date parsing.
 export function parseFilterDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
   const [year, month, day] = value.split('-').map(Number);
@@ -94,7 +93,6 @@ export function getFilterSummary(filters) {
   return labels.filter(Boolean).join(' · ');
 }
 
-// Only the filtered, valid coordinates reach Leaflet. List-only reports stay visible in the list.
 export function getMapReports(reports) {
   return reports.flatMap((report) => {
     const coords = getReportCoordinates(report);

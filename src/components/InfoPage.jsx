@@ -40,7 +40,8 @@ export default function InfoPage({ title, subtitle, children }) {
 export const infoStyles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#f3f5f9' },
   header: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#e6ebf1' },
-  back: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#f3f5f9', alignItems: 'center', justifyContent: 'center' },
+  back: { minWidth: 36, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  actionBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#f3f5f9', alignItems: 'center', justifyContent: 'center' },
   title: { color: '#172b40', fontSize: 20, fontWeight: '700' },
   content: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: 16, gap: 16 },
   card: { backgroundColor: '#fff', borderRadius: 18, padding: 18, gap: 12, borderWidth: 1, borderColor: '#e6ebf1' },
