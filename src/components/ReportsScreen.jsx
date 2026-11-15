@@ -96,7 +96,7 @@ export default function ReportsScreen({ categoryMode = false }) {
         <Text style={styles.headerTitle} numberOfLines={1}>{categoryMode ? 'Reports by Category' : 'All Reports'}</Text>
         <Text style={styles.headerSubtitle} numberOfLines={1}>{categoryMode ? 'Browse by type and open a report for details' : 'Browse reported water issues'}</Text>
       </View>
-      <TouchableOpacity onPress={refreshReports} disabled={loading} style={styles.backButton}
+      <TouchableOpacity onPress={refreshReports} disabled={loading} style={styles.actionButton}
         accessibilityRole="button" accessibilityLabel="Refresh reports">
         {loading ? <ActivityIndicator size="small" color="#007AFF" /> : <Ionicons name="refresh" size={22} color="#007AFF" />}
       </TouchableOpacity>
@@ -285,13 +285,19 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e5e5ea',
   },
   backButton: {
+    minWidth: 36,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  actionButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f2f2f7',
-    marginRight: 10,
   },
   headerTitleWrap: {
     flex: 1,

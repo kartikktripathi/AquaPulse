@@ -65,18 +65,18 @@ const SIDEBAR_ITEMS = [
     route: '/helpline',
   },
   {
-    id: 'about',
-    title: 'About the Application',
-    subtitle: 'App details, version, and mission',
-    icon: 'information-circle-outline',
-    route: '/about',
-  },
-  {
     id: 'area_trends',
     title: 'Areas Getting Worse',
     subtitle: 'Weekly change in reports',
     icon: 'trending-up-outline',
     route: '/area-trends',
+  },
+  {
+    id: 'about',
+    title: 'About the Application',
+    subtitle: 'App details, version, and mission',
+    icon: 'information-circle-outline',
+    route: '/about',
   },
 ];
 

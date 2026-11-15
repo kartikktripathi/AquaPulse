@@ -112,7 +112,7 @@ export default function AreaTrendsScreen() {
         <TouchableOpacity
           onPress={refreshReports}
           disabled={loading}
-          style={styles.backButton}
+          style={styles.actionButton}
           accessibilityRole="button"
           accessibilityLabel="Refresh reports"
         >
@@ -147,13 +147,19 @@ const styles = StyleSheet.create({
     elevation: 3
   },
   backButton: {
+    minWidth: 36,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6
+  },
+  actionButton: {
     minWidth: 44,
     minHeight: 44,
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f2f2f7',
-    marginRight: 10
+    backgroundColor: '#f2f2f7'
   },
   headerTitleWrap: {
     flex: 1

@@ -108,15 +108,15 @@ export function ResolveWithProof({ report, userCoords, onResolved }) {
             style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
             onPress={handleTakePhoto}
           >
-            <Ionicons name="camera" size={18} color="#007AFF" />
-            <Text style={styles.actionButtonText}>Take after photo</Text>
+            <Ionicons name="camera" size={17} color="#007AFF" />
+            <Text style={styles.actionButtonText} numberOfLines={1} adjustsFontSizeToFit>Take after photo</Text>
           </Pressable>
           <Pressable
             style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
             onPress={handleChoosePhoto}
           >
-            <Ionicons name="images" size={18} color="#007AFF" />
-            <Text style={styles.actionButtonText}>Choose after photo</Text>
+            <Ionicons name="images" size={17} color="#007AFF" />
+            <Text style={styles.actionButtonText} numberOfLines={1} adjustsFontSizeToFit>Choose after photo</Text>
           </Pressable>
         </View>
       )}
@@ -162,28 +162,32 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
     marginTop: 4
   },
   actionButton: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
+    gap: 6,
     backgroundColor: '#ffffff',
     borderWidth: 1.5,
     borderColor: '#007AFF',
     borderRadius: 12,
-    height: 44
+    height: 44,
+    paddingHorizontal: 8
   },
   actionButtonPressed: {
     backgroundColor: '#f0f7ff'
   },
   actionButtonText: {
     color: '#007AFF',
-    fontSize: 13,
-    fontWeight: '600'
+    fontSize: 12,
+    fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'center'
   },
   uploadingBox: {
     flexDirection: 'row',

@@ -22,7 +22,7 @@ export default function Alerts() {
       <Pressable style={s.back} accessibilityRole="button" accessibilityLabel="Back to map" onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
         <Ionicons name="chevron-back" size={24} color="#243447" /></Pressable>
       <View style={{ flex: 1 }}><Text accessibilityRole="header" style={s.title}>Water Outages & Alerts</Text><Text style={s.muted}>Community reports · all areas</Text></View>
-      <Pressable style={s.back} disabled={loading} accessibilityRole="button" accessibilityLabel="Refresh alerts" onPress={refreshReports}>
+      <Pressable style={s.actionBtn} disabled={loading} accessibilityRole="button" accessibilityLabel="Refresh alerts" onPress={refreshReports}>
         {loading ? <ActivityIndicator color="#007AFF" /> : <Ionicons name="refresh" size={22} color="#007AFF" />}</Pressable>
     </View>
     <FlatList data={alerts} keyExtractor={(item, index) => String(item.id ?? index)}

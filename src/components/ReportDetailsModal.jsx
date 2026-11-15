@@ -231,7 +231,6 @@ export default function ReportDetailsModal({ report, userCoords, onClose, onPhot
 
                 <BeforeAfter photos={allPhotos} />
 
-                {/* Photo Viewer Carousel or Empty State */}
                 {photos.length > 0 ? (
                   <>
                     <ReportPhoto
@@ -279,7 +278,6 @@ export default function ReportDetailsModal({ report, userCoords, onClose, onPhot
                   </View>
                 )}
 
-                {/* 500m Reporting Zone Photo Contribution Card */}
                 {isWithin500m ? (
                   <View style={styles.contributeCard}>
                     <View style={styles.contributeHeader}>
@@ -476,6 +474,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -485,14 +484,16 @@ const styles = StyleSheet.create({
     borderColor: '#007AFF',
     borderRadius: 12,
     height: 44,
+    paddingHorizontal: 6,
   },
   actionButtonPressed: {
     backgroundColor: '#f0f7ff',
   },
   actionButtonText: {
     color: '#007AFF',
-    fontSize: 13.5,
+    fontSize: 13,
     fontWeight: '600',
+    flexShrink: 1,
   },
   uploadingBox: {
     flexDirection: 'row',

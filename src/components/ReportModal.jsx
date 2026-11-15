@@ -426,7 +426,6 @@ export default function ReportModal({
                 paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : 16,
               },
             ]}>
-            {/* Header */}
             <View style={styles.header}>
               <View style={styles.headerLeft}>
                 <View style={styles.headerIconBubble}>
@@ -540,7 +539,6 @@ export default function ReportModal({
                 contentContainerStyle={styles.formContent}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}>
-                {/* 500m Radius Circle Status Card */}
                 <View
                   style={[
                     styles.radiusCard,
@@ -582,9 +580,12 @@ export default function ReportModal({
                       activeOpacity={0.7}
                       style={styles.radiusActionBtn}
                       onPress={handleResetToUserLocation}>
-                      <Ionicons name="navigate-outline" size={15} color="#007aff" />
-                      <Text style={styles.radiusActionBtnText}>
-                        Use My Location (0m)
+                      <Ionicons name="navigate-outline" size={14} color="#007aff" />
+                      <Text
+                        style={styles.radiusActionBtnText}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit>
+                        Use My Location
                       </Text>
                     </TouchableOpacity>
                     {onAdjustOnMap && (
@@ -592,8 +593,13 @@ export default function ReportModal({
                         activeOpacity={0.7}
                         style={styles.radiusActionBtn}
                         onPress={handleAdjustOnMap}>
-                        <Ionicons name="map-outline" size={15} color="#007aff" />
-                        <Text style={styles.radiusActionBtnText}>Adjust on Map</Text>
+                        <Ionicons name="map-outline" size={14} color="#007aff" />
+                        <Text
+                          style={styles.radiusActionBtnText}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit>
+                          Adjust on Map
+                        </Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -606,7 +612,6 @@ export default function ReportModal({
                   </View>
                 )}
 
-                {/* 1. Problem Name Field */}
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>
                     Problem Name <Text style={styles.requiredMark}>*</Text>
@@ -634,14 +639,12 @@ export default function ReportModal({
                   )}
                 </View>
 
-                {/* 2. Category Dropdown Field */}
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>
                     Category of Water Problem{' '}
                     <Text style={styles.requiredMark}>*</Text>
                   </Text>
 
-                  {/* Dropdown trigger box */}
                   <TouchableOpacity
                     activeOpacity={0.8}
                     style={[
@@ -683,7 +686,6 @@ export default function ReportModal({
                     </View>
                   )}
 
-                  {/* Dropdown Options List */}
                   {isDropdownOpen && (
                     <View style={styles.dropdownMenu}>
                       {FORM_CATEGORIES.map((item) => {
@@ -842,12 +844,11 @@ export default function ReportModal({
                   );
                 })()}
 
-                {/* 3. Address Section */}
                 <View style={styles.addressSectionBox}>
                   <View style={styles.addressSectionHeader}>
                     <View style={styles.addressHeaderLeft}>
-                      <Ionicons name="location" size={18} color="#007aff" />
-                      <Text style={styles.addressSectionTitle}>
+                      <Ionicons name="location" size={17} color="#007aff" />
+                      <Text style={styles.addressSectionTitle} numberOfLines={1}>
                         Problem Address Details
                       </Text>
                     </View>
@@ -868,7 +869,6 @@ export default function ReportModal({
                     )}
                   </View>
 
-                  {/* Address Line 1 */}
                   <View style={styles.fieldGroup}>
                     <Text style={styles.fieldLabel}>
                       Address Line 1 <Text style={styles.requiredMark}>*</Text>
@@ -899,7 +899,6 @@ export default function ReportModal({
                     )}
                   </View>
 
-                  {/* Address Line 2 */}
                   <View style={styles.fieldGroup}>
                     <Text style={styles.fieldLabel}>Address Line 2</Text>
                     <TextInput
@@ -911,7 +910,6 @@ export default function ReportModal({
                     />
                   </View>
 
-                  {/* Landmark */}
                   <View style={styles.fieldGroupLast}>
                     <Text style={styles.fieldLabel}>
                       Landmark <Text style={styles.requiredMark}>*</Text>
@@ -943,7 +941,6 @@ export default function ReportModal({
                   </View>
                 </View>
 
-                {/* 4. Description Paragraph Field */}
                 <View style={styles.fieldGroup}>
                   <Text style={styles.fieldLabel}>
                     Description of the Problem{' '}
@@ -978,7 +975,6 @@ export default function ReportModal({
                   )}
                 </View>
 
-                {/* 5. Photos of the Problem */}
                 <View style={styles.fieldGroup}>
                   <View style={styles.fieldLabelRow}>
                     <Text style={styles.fieldLabel}>Photos of the Problem</Text>
@@ -1018,7 +1014,6 @@ export default function ReportModal({
                     </View>
                   )}
 
-                  {/* Thumbnail gallery preview */}
                   {photos.length > 0 ? (
                     <ScrollView
                       horizontal
@@ -1058,7 +1053,6 @@ export default function ReportModal({
                   </View>
                 )}
 
-                {/* Submit button */}
                 <TouchableOpacity
                   activeOpacity={0.8}
                   style={[
@@ -1215,24 +1209,30 @@ const styles = StyleSheet.create({
   },
   radiusActionsRow: {
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
+    gap: 8,
     marginTop: 10,
+    width: '100%',
   },
   radiusActionBtn: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#b9dbff',
     borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
     gap: 5,
   },
   radiusActionBtnText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#007aff',
+    textAlign: 'center',
   },
   radiusErrorBanner: {
     flexDirection: 'row',
@@ -1272,22 +1272,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flex: 1,
+    marginRight: 8,
   },
   addressSectionTitle: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '700',
     color: '#1c1c1e',
+    flexShrink: 1,
   },
   autoDetectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#eff6ff',
-    paddingVertical: 4,
+    paddingVertical: 5,
     paddingHorizontal: 8,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#bfdbfe',
+    flexShrink: 0,
   },
   autoDetectBtnText: {
     fontSize: 11,
@@ -1453,6 +1457,7 @@ const styles = StyleSheet.create({
   },
   photoActionButton: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1462,6 +1467,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     height: 44,
     gap: 6,
+    paddingHorizontal: 6,
   },
   photoActionButtonText: {
     fontSize: 13,
